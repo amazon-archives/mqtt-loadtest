@@ -7,12 +7,14 @@ import java.util.UUID
 import org.joda.time.DateTime
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicInteger
+import org.eclipse.paho.client.mqttv3.internal.MemoryPersistence
 
-abstract sealed class Client(id: Int) {
+abstract sealed class Client(prefix: String, id: Int) {
   import Config.config
 
   val client = {
-    val c = new MqttClient(s"tcp://${config.host}:${config.port}", config.baseClientId + id)
+    val persistence = new MqttDefaultFilePersistence("/tmp")
+    val c = new MqttClient(s"tcp://${config.host}:${config.port}", prefix + id, persistence)
     val opts = new MqttConnectOptions
     if (config.user.isDefined) opts.setUserName(config.user.get)
     if (config.password.isDefined) opts.setPassword(md5(config.password.get).toCharArray)
@@ -25,12 +27,15 @@ abstract sealed class Client(id: Int) {
     MessageDigest.getInstance("MD5").digest(str.getBytes("utf8")).map("%02x" format _).mkString
 }
 
-case class Subscriber(id: Int) extends Client(id) {
+case class Subscriber(prefix: String, id: Int) extends Client(prefix, id) {
+  import Config.config
 
-  client.subscribe("io.m2m/loadtest/+/midwithdsn/<iterator>/65", 1)
+
+  //client.subscribe("public/loadtest/+/midwithdsn/<iterator>/65", 1)
+  client.subscribe(config.subTopic(id), config.subQos)
 }
 
-case class Publisher(id: Int) extends Client(id) {
+case class Publisher(prefix: String, id: Int) extends Client(prefix, id) {
   import Config.config
 
   val sleepBetweenPublishes = config.publishRate
@@ -91,18 +96,22 @@ object Reporter extends MqttCallback {
 
 object LoadTest extends App {
 
+  //Don't cache DNS lookups
+  java.security.Security.setProperty("networkaddress.cache.ttl" , "0")
+
   import Config.config
 
   new Thread(new Runnable { def run() {launchSubscribers()} }).start()
 
   for (i <- 1 to config.publishers) {
-    val pub = Publisher(i)
+    val pub = Publisher(config.publisherPrefix, i)
+    Thread.sleep(config.connectRate)
     new Thread(new Runnable { def run() {pub.run()} }).start()
   }
 
   def launchSubscribers() {
     for (i <- 1 to config.subscribers) {
-      Subscriber(i)
+      Subscriber(config.subscriberPrefix, i)
       Thread.sleep(config.connectRate)
     }
   }

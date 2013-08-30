@@ -12,27 +12,29 @@ object Config {
       conf.getInt("port"),
       if (conf.hasPath("username")) Some(conf.getString("username")) else None,
       if (conf.hasPath("password")) Some(conf.getString("password")) else None,
-      conf.getString("publishers.base-client-id"),
       conf.getString("publishers.topic"),
       conf.getString("subscribers.topic"),
       conf.getInt("publishers.count"),
       conf.getInt("subscribers.count"),
-      conf.getMilliseconds("subscribers.millis-between-connects"),
+      conf.getMilliseconds("millis-between-connects"),
       conf.getMilliseconds("publishers.millis-between-publish"),
       if (conf.hasPath("publishers.payload.path")) FileMessage(conf.getString("publishers.payload.path"))
       else Utf8Message(conf.getString("publishers.payload")),
       conf.getInt("publishers.qos"),
       conf.getInt("subscribers.qos"),
-      conf.getBoolean("publishers.retain")
+      conf.getBoolean("publishers.retain"),
+      conf.getString("publishers.client-id-prefix"),
+      conf.getString("subscribers.client-id-prefix")
     )
   }
 
   lazy val config = getConfig
 }
 
-case class Config(host: String, port: Int, user: Option[String], password: Option[String], baseClientId: String,
+case class Config(host: String, port: Int, user: Option[String], password: Option[String],
                   pubTopic: String, subTopic: String, publishers: Int, subscribers: Int, connectRate: Long,
-                  publishRate: Long, payload: MessageSource, pubQos: Int, subQos: Int, pubRetain: Boolean) {
+                  publishRate: Long, payload: MessageSource, pubQos: Int, subQos: Int, pubRetain: Boolean,
+                  publisherPrefix: String, subscriberPrefix: String) {
 
   private def templateTopic(topic: String, id: Int) = topic.replaceAll("\\$num", id.toString)
 
