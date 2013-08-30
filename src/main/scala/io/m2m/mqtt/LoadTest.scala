@@ -20,7 +20,6 @@ abstract sealed class Client(prefix: String, id: Int) {
     if (config.password.isDefined) opts.setPassword(md5(config.password.get).toCharArray)
     c.connect(opts)
     c.setCallback(callback)
-    Reporter.addSubscriber()
     c
   }
 
@@ -33,8 +32,8 @@ abstract sealed class Client(prefix: String, id: Int) {
 case class Subscriber(prefix: String, id: Int) extends Client(prefix, id) {
   import Config.config
 
-
   client.subscribe(config.subTopic(id), config.subQos)
+  Reporter.addSubscriber()
 
   protected def callback: MqttCallback = SubHandler
 }
@@ -79,7 +78,7 @@ object PubHandler extends LoadTestMqttCallback {
   }
 }
 
-object Reporter extends MqttCallback {
+object Reporter {
   val start = DateTime.now().millisOfDay().get()
   val pubSent = new AtomicInteger()
   val pubComplete = new AtomicInteger()
