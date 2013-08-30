@@ -13,6 +13,7 @@ object Config {
       if (conf.hasPath("username")) Some(conf.getString("username")) else None,
       if (conf.hasPath("password")) Some(conf.getString("password")) else None,
       conf.getString("publishers.base-client-id"),
+      conf.getString("subscribers.base-client-id"),
       conf.getString("publishers.topic"),
       conf.getString("subscribers.topic"),
       conf.getInt("publishers.count"),
@@ -30,8 +31,8 @@ object Config {
   lazy val config = getConfig
 }
 
-case class Config(host: String, port: Int, user: Option[String], password: Option[String], baseClientId: String,
-                  pubTopic: String, subTopic: String, publishers: Int, subscribers: Int, connectRate: Long,
+case class Config(host: String, port: Int, user: Option[String], password: Option[String], pubBaseClientId: String,
+                  subBaseClientId: String, pubTopic: String, subTopic: String, publishers: Int, subscribers: Int, connectRate: Long,
                   publishRate: Long, payload: MessageSource, pubQos: Int, subQos: Int, pubRetain: Boolean) {
 
   private def templateTopic(topic: String, id: Int) = topic.replaceAll("\\$num", id.toString)

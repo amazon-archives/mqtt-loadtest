@@ -12,14 +12,18 @@ abstract sealed class Client(id: Int) {
   import Config.config
 
   val client = {
-    val c = new MqttClient(s"tcp://${config.host}:${config.port}", config.baseClientId + id)
+    val c = new MqttClient(s"tcp://${config.host}:${config.port}", baseClientId + id)
     val opts = new MqttConnectOptions
     if (config.user.isDefined) opts.setUserName(config.user.get)
     if (config.password.isDefined) opts.setPassword(md5(config.password.get).toCharArray)
     c.connect(opts)
-    c.setCallback(Reporter)
+    c.setCallback(callback)
+    Reporter.addSubscriber()
     c
   }
+
+  protected def callback: MqttCallback
+  def baseClientId: String
 
   private def md5(str: String) =
     MessageDigest.getInstance("MD5").digest(str.getBytes("utf8")).map("%02x" format _).mkString
@@ -28,6 +32,8 @@ abstract sealed class Client(id: Int) {
 case class Subscriber(id: Int) extends Client(id) {
 
   client.subscribe("io.m2m/loadtest/+/midwithdsn/<iterator>/65", 1)
+  protected def callback: MqttCallback = SubHandler
+  def baseClientId = Config.config.subBaseClientId
 }
 
 case class Publisher(id: Int) extends Client(id) {
@@ -37,6 +43,7 @@ case class Publisher(id: Int) extends Client(id) {
   val topic = client.getTopic(config.pubTopic(id))
 
   def run() {
+    Reporter.addPublisher()
     var iteration = 0
     while(true) {
       val payload = config.payload.get(id, iteration)
@@ -45,6 +52,28 @@ case class Publisher(id: Int) extends Client(id) {
       iteration += 1
       Thread.sleep(sleepBetweenPublishes)
     }
+  }
+
+  protected def callback: MqttCallback = PubHandler
+  def baseClientId = Config.config.pubBaseClientId
+}
+
+abstract class LoadTestMqttCallback extends MqttCallback {
+  def deliveryComplete(deliveryToken: MqttDeliveryToken) = Reporter.deliveryComplete(deliveryToken)
+  def messageArrived(topic: MqttTopic, message: MqttMessage) = Reporter.messageArrived(topic, message)
+}
+
+object SubHandler extends LoadTestMqttCallback {
+  def connectionLost(error: Throwable) {
+    error.printStackTrace()
+    Reporter.lostSubscriber()
+  }
+}
+
+object PubHandler extends LoadTestMqttCallback {
+  def connectionLost(error: Throwable) {
+    error.printStackTrace()
+    Reporter.lostPublisher()
   }
 }
 
@@ -64,8 +93,17 @@ object Reporter extends MqttCallback {
   def messageArrived(topic: MqttTopic, message: MqttMessage) = subArrived.incrementAndGet()
   def connectionLost(error: Throwable) {error.printStackTrace()}
 
+  var publishers = 0
+  var subscribers = 0
+
+  def addPublisher() {publishers += 1}
+  def addSubscriber() {subscribers += 1}
+  def lostPublisher() {publishers -= 1}
+  def lostSubscriber() {subscribers -= 1}
+
   def run() {
-    println("Elapsed (ms),Sent (msgs/s),Published (msgs/s),Consumed (msgs/s)")
+    println("Elapsed (ms),Sent (msgs/s),Published (msgs/s),Consumed (msgs/s),Num Publishers,Num Subscribers")
+
     while(true) {
       Thread.sleep(1000)
 
@@ -74,12 +112,12 @@ object Reporter extends MqttCallback {
       val complete = pubComplete.get()
       val arrived = subArrived.get()
 
-      val elapsedMs = now - lastTime
+      val elapsedMs = now - start
       val sentPs = sent - lastSent
       val completePs = complete - lastComplete
       val arrivedPs = arrived - lastArrived
 
-      println(s"$elapsedMs,$sentPs,$completePs,$arrivedPs")
+      println(s"$elapsedMs,$sentPs,$completePs,$arrivedPs,$publishers,$subscribers")
 
       lastTime = now
       lastSent = sent
@@ -95,10 +133,14 @@ object LoadTest extends App {
 
   new Thread(new Runnable { def run() {launchSubscribers()} }).start()
 
-  for (i <- 1 to config.publishers) {
-    val pub = Publisher(i)
-    new Thread(new Runnable { def run() {pub.run()} }).start()
-  }
+  new Thread(new Runnable {
+    def run() {
+      for (i <- 1 to config.publishers) {
+        val pub = Publisher(i)
+        new Thread(new Runnable { def run() {pub.run()} }).start()
+      }
+    }
+  }).start()
 
   def launchSubscribers() {
     for (i <- 1 to config.subscribers) {
