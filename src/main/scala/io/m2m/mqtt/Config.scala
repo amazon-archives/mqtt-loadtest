@@ -36,6 +36,7 @@ case class Config(host: String, port: Int, user: Option[String], password: Optio
                   publishRate: Long, payload: MessageSource, pubQos: Int, subQos: Int, pubRetain: Boolean,
                   publisherPrefix: String, subscriberPrefix: String) {
 
+
   private def templateTopic(topic: String, id: Int) = topic.replaceAll("\\$num", id.toString)
 
   def pubTopic(id: Int): String = templateTopic(pubTopic, id)
