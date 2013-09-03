@@ -6,6 +6,7 @@ import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicInteger
 import akka.actor._
 import scala.concurrent.duration._
+import org.eclipse.paho.client.mqttv3.persist.MqttDefaultFilePersistence
 
 abstract sealed class Client(prefix: String, id: Int) {
   import Config.config
@@ -17,6 +18,7 @@ abstract sealed class Client(prefix: String, id: Int) {
     if (config.user.isDefined) opts.setUserName(config.user.get)
     if (config.password.isDefined) opts.setPassword(md5(config.password.get).toCharArray)
     opts.setConnectionTimeout(500)
+    opts.setKeepAliveInterval(30)
     c.connect(opts)
     c.setCallback(callback)
     c
@@ -81,8 +83,8 @@ class PublisherFactory extends Actor {
 }
 
 abstract class LoadTestMqttCallback extends MqttCallback {
-  def deliveryComplete(deliveryToken: MqttDeliveryToken) = Reporter.deliveryComplete(deliveryToken)
-  def messageArrived(topic: MqttTopic, message: MqttMessage) = Reporter.messageArrived(topic, message)
+  def deliveryComplete(deliveryToken: IMqttDeliveryToken) = Reporter.deliveryComplete(deliveryToken)
+  def messageArrived(topic: String, message: MqttMessage) = Reporter.messageArrived(topic, message)
 }
 
 object SubHandler extends LoadTestMqttCallback {
@@ -111,8 +113,8 @@ object Reporter {
   var lastArrived = 0
 
   def sentPublish() = pubSent.incrementAndGet()
-  def deliveryComplete(deliveryToken: MqttDeliveryToken) = pubComplete.incrementAndGet()
-  def messageArrived(topic: MqttTopic, message: MqttMessage) = subArrived.incrementAndGet()
+  def deliveryComplete(deliveryToken: IMqttDeliveryToken) = pubComplete.incrementAndGet()
+  def messageArrived(topic: String, message: MqttMessage) = subArrived.incrementAndGet()
   def connectionLost(error: Throwable) {error.printStackTrace()}
 
   var publishers = 0
