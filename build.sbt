@@ -20,6 +20,8 @@ resolvers ++= Seq(
 )
 
 libraryDependencies ++= Seq(
+	"com.typesafe.akka" %% "akka-actor" % "2.2.0",
+    "com.typesafe.akka" %% "akka-remote" % "2.2.0",
 	"com.typesafe" % "config" % "1.0.2",
 	"org.scala-lang" % "scala-reflect" % "2.10.2",
 	"org.eclipse.paho" % "paho.mqttv3" % "1.0.2",

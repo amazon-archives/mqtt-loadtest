@@ -4,6 +4,8 @@ import org.eclipse.paho.client.mqttv3._
 import org.joda.time.DateTime
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicInteger
+import akka.actor._
+import scala.concurrent.duration._
 
 abstract sealed class Client(prefix: String, id: Int) {
   import Config.config
@@ -35,25 +37,47 @@ case class Subscriber(prefix: String, id: Int) extends Client(prefix, id) {
   protected def callback: MqttCallback = SubHandler
 }
 
-case class Publisher(prefix: String, id: Int) extends Client(prefix, id) {
+case class Publisher(prefix: String, id: Int) extends Client(prefix, id) with Actor {
   import Config.config
 
   val sleepBetweenPublishes = config.publishRate
   val topic = client.getTopic(config.pubTopic(id))
+  var iteration = 0
 
-  def run() {
-    Reporter.addPublisher()
-    var iteration = 0
-    while(true) {
+  Reporter.addPublisher()
+
+  def receive = {
+    case "publish" =>
       val payload = config.payload.get(id, iteration)
       topic.publish(payload, config.pubQos, config.pubRetain)
       Reporter.sentPublish()
       iteration += 1
-      Thread.sleep(sleepBetweenPublishes)
-    }
   }
 
   protected def callback: MqttCallback = PubHandler
+}
+
+class PublisherFactory extends Actor {
+  import Config.config
+  import scala.concurrent.ExecutionContext.Implicits.global
+
+  val prefix = config.publisherPrefix
+  var iteration = 0
+  context.system.scheduler.schedule(0 millis, config.connectRate millis) {
+    iteration += 1
+    if (iteration > config.publishers)
+      self ! PoisonPill
+    else
+      self ! iteration
+  }
+
+  def receive = {
+    case i: Int =>
+      val publisher = context.system.actorOf(Props(classOf[Publisher], prefix, i).withDispatcher("publish-dispatcher"))
+      context.system.scheduler.schedule(config.publishRate millis, config.publishRate millis) {
+        publisher ! "publish"
+      }
+  }
 }
 
 abstract class LoadTestMqttCallback extends MqttCallback {
@@ -132,16 +156,13 @@ object LoadTest extends App {
 
   import Config.config
 
-  for (i <- 1 to config.publishers) {
-    val pub = Publisher(config.publisherPrefix, i)
-    Thread.sleep(config.connectRate)
-    new Thread(new Runnable { def run() {pub.run()} }).start()
-  }
+  val system = ActorSystem("LoadTest")
+  system.actorOf(Props[PublisherFactory])
 
   new Thread(new Runnable { def run() {launchSubscribers()} }).start()
 
-  def launchSubscribers() {
-    for (i <- 1 to config.subscribers) {
+  def launchSubscribers(start: Int = 0) {
+    for (i <- (start + 1) to config.subscribers) {
       try {
         Subscriber(config.subscriberPrefix, i)
       } catch {
