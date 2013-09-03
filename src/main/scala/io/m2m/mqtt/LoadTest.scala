@@ -1,13 +1,9 @@
 package io.m2m.mqtt
 
 import org.eclipse.paho.client.mqttv3._
-import scala.reflect.io.Streamable
-import java.io.FileInputStream
-import java.util.UUID
 import org.joda.time.DateTime
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicInteger
-import org.eclipse.paho.client.mqttv3.internal.MemoryPersistence
 
 abstract sealed class Client(prefix: String, id: Int) {
   import Config.config
@@ -18,6 +14,7 @@ abstract sealed class Client(prefix: String, id: Int) {
     val opts = new MqttConnectOptions
     if (config.user.isDefined) opts.setUserName(config.user.get)
     if (config.password.isDefined) opts.setPassword(md5(config.password.get).toCharArray)
+    opts.setConnectionTimeout(500)
     c.connect(opts)
     c.setCallback(callback)
     c
@@ -115,10 +112,10 @@ object Reporter {
 
       val elapsedMs = now - start
       val sentPs = sent - lastSent
-      val completePs = complete - lastComplete
-      val arrivedPs = arrived - lastArrived
+      val publishedPs = complete - lastComplete
+      val consumedPs = arrived - lastArrived
 
-      println(s"$elapsedMs,$sentPs,$completePs,$arrivedPs,$publishers,$subscribers")
+      println(s"$elapsedMs,$sentPs,$publishedPs,$consumedPs,$publishers,$subscribers")
 
       lastTime = now
       lastSent = sent
@@ -135,19 +132,21 @@ object LoadTest extends App {
 
   import Config.config
 
-  new Thread(new Runnable { def run() {launchSubscribers()} }).start()
-
-
   for (i <- 1 to config.publishers) {
     val pub = Publisher(config.publisherPrefix, i)
     Thread.sleep(config.connectRate)
     new Thread(new Runnable { def run() {pub.run()} }).start()
   }
 
+  new Thread(new Runnable { def run() {launchSubscribers()} }).start()
 
   def launchSubscribers() {
     for (i <- 1 to config.subscribers) {
-      Subscriber(config.subscriberPrefix, i)
+      try {
+        Subscriber(config.subscriberPrefix, i)
+      } catch {
+        case e: Throwable => e.printStackTrace()
+      }
       Thread.sleep(config.connectRate)
     }
   }
