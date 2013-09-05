@@ -91,7 +91,7 @@ case class Publisher(id: Int) extends Actor {
 
   val sleepBetweenPublishes = config.publishRate
   val qos = Client.qos(config.pubQos)
-  val publishCallback = Client.callback((_: Void) => Reporter.deliveryComplete(), _ => {})
+  val publishCallback = Client.callback((_: Void) => Reporter.deliveryComplete(), _ => {println("delivery failed")})
   var iteration = 0
 
   def receive = {
@@ -142,9 +142,10 @@ object Reporter {
     val elapsedMs = now - start
     val sentPs = sent - lastSent
     val publishedPs = complete - lastComplete
+    val inFlight = sent - complete
     val consumedPs = arrived - lastArrived
 
-    println(s"$elapsedMs,$sentPs,$publishedPs,$consumedPs,$publishers,$subscribers")
+    println(s"$elapsedMs,$sentPs,$publishedPs,$consumedPs,$inFlight,$publishers,$subscribers")
 
     lastTime = now
     lastSent = sent
@@ -156,7 +157,7 @@ object Reporter {
 object Report
 
 class Reporter extends Actor {
-  println("Elapsed (ms),Sent (msgs/s),Published (msgs/s),Consumed (msgs/s),Num Publishers,Num Subscribers")
+  println("Elapsed (ms),Sent (msgs/s),Published (msgs/s),Consumed (msgs/s),In Flight,Num Publishers,Num Subscribers")
 
   def receive = {
     case Report => Reporter.doReport()
