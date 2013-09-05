@@ -91,7 +91,7 @@ case class Publisher(id: Int) extends Actor {
 
   val sleepBetweenPublishes = config.publishRate
   val qos = Client.qos(config.pubQos)
-  val publishCallback = Client.callback((_: Void) => Reporter.deliveryComplete(), _ => {println("delivery failed")})
+  val publishCallback = Client.callback((_: Void) => Reporter.deliveryComplete(), Reporter.messageErred)
   var iteration = 0
 
   def receive = {
@@ -114,16 +114,19 @@ object Reporter {
   val pubSent = new AtomicInteger()
   val pubComplete = new AtomicInteger()
   val subArrived = new AtomicInteger()
+  val errors = new AtomicInteger()
 
   var lastTime = start
   var lastSent = 0
   var lastComplete = 0
   var lastArrived = 0
+  var lastErrors = 0
 
   def sentPublish() = pubSent.incrementAndGet()
   def deliveryComplete() = pubComplete.incrementAndGet()
   def messageArrived(topic: String, message: Array[Byte]) = subArrived.incrementAndGet()
   def connectionLost(error: Throwable) {error.printStackTrace()}
+  def messageErred(error: Throwable) {errors.incrementAndGet()}
 
   var publishers = 0
   var subscribers = 0
@@ -138,26 +141,29 @@ object Reporter {
     val sent = pubSent.get()
     val complete = pubComplete.get()
     val arrived = subArrived.get()
+    val currentErrors = errors.get()
 
     val elapsedMs = now - start
     val sentPs = sent - lastSent
     val publishedPs = complete - lastComplete
     val inFlight = sent - complete
     val consumedPs = arrived - lastArrived
+    val errorsPs = currentErrors - lastErrors
 
-    println(s"$elapsedMs,$sentPs,$publishedPs,$consumedPs,$inFlight,$publishers,$subscribers")
+    println(s"$elapsedMs,$sentPs,$publishedPs,$consumedPs,$inFlight,$errorsPs,$publishers,$subscribers")
 
     lastTime = now
     lastSent = sent
     lastComplete = complete
     lastArrived = arrived
+    lastErrors = currentErrors
   }
 }
 
 object Report
 
 class Reporter extends Actor {
-  println("Elapsed (ms),Sent (msgs/s),Published (msgs/s),Consumed (msgs/s),In Flight,Num Publishers,Num Subscribers")
+  println("Elapsed (ms),Sent (msgs/s),Published (msgs/s),Consumed (msgs/s),In Flight,Errors (msgs/s),Num Publishers,Num Subscribers")
 
   def receive = {
     case Report => Reporter.doReport()
