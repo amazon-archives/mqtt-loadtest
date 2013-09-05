@@ -41,6 +41,8 @@ case class Config(host: String, port: Int, user: Option[String], password: Optio
 
   def pubTopic(id: Int): String = templateTopic(pubTopic, id)
   def subTopic(id: Int): String = templateTopic(subTopic, id)
+  def subscriberId(id: Int) = subscriberPrefix + id
+  def publisherId(id: Int) = publisherPrefix + id
 }
 
 sealed abstract class MessageSource {
@@ -52,6 +54,7 @@ case class Utf8Message(msg: String) extends MessageSource {
 }
 
 case class FileMessage(file: String) extends MessageSource {
-  def get(clientNum: Int, iteration: Int) = Streamable.bytes(new FileInputStream(file))
+  val fileBytes = Streamable.bytes(new FileInputStream(file))
+  def get(clientNum: Int, iteration: Int) = fileBytes
 }
 

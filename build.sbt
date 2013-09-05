@@ -25,7 +25,7 @@ libraryDependencies ++= Seq(
     "com.typesafe.akka" %% "akka-remote" % "2.2.0",
 	"com.typesafe" % "config" % "1.0.2",
 	"org.scala-lang" % "scala-reflect" % "2.10.2",
-	"org.eclipse.paho" % "mqtt-client" % "0.4.0",
+	"org.joda" % "joda-convert" % "1.4",
 	"joda-time" % "joda-time" % "2.3",
-	"org.joda" % "joda-convert" % "1.4"
+	"org.fusesource.mqtt-client" % "mqtt-client" % "1.5"
 )

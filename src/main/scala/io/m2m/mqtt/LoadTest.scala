@@ -1,103 +1,111 @@
 package io.m2m.mqtt
 
-import org.eclipse.paho.client.mqttv3._
 import org.joda.time.DateTime
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicInteger
 import akka.actor._
 import scala.concurrent.duration._
-import org.eclipse.paho.client.mqttv3.persist.MqttDefaultFilePersistence
+import org.fusesource.mqtt.client._
+import scala.concurrent.ExecutionContext
+import org.fusesource.hawtbuf.{Buffer, UTF8Buffer}
+import org.fusesource.mqtt.codec.MQTTFrame
+import scala.util.Try
 
-abstract sealed class Client(prefix: String, id: Int) {
+object Client {
   import Config.config
 
-  val client = {
-    val persistence = new MqttDefaultFilePersistence("/tmp")
-    val c = new MqttClient(s"tcp://${config.host}:${config.port}", prefix + id, persistence)
-    val opts = new MqttConnectOptions
-    if (config.user.isDefined) opts.setUserName(config.user.get)
-    if (config.password.isDefined) opts.setPassword(md5(config.password.get).toCharArray)
-    opts.setConnectionTimeout(500)
-    opts.setKeepAliveInterval(30)
-    c.connect(opts)
-    c.setCallback(callback)
-    c
+  private def getClient(prefix: String, id: Int) = {
+    val mqtt = new MQTT()
+    mqtt.setTracer(new Tracer {
+      override def onReceive(frame: MQTTFrame) {
+      }
+    })
+    mqtt.setHost(config.host, config.port)
+    mqtt.setClientId(prefix + id)
+    mqtt.setCleanSession(true)
+    if (config.user.isDefined) mqtt.setUserName(config.user.get)
+    if (config.password.isDefined) mqtt.setPassword(md5(config.password.get))
+    mqtt.setKeepAlive(30)
+    mqtt.callbackConnection()
   }
-
-  protected def callback: MqttCallback
 
   private def md5(str: String) =
     MessageDigest.getInstance("MD5").digest(str.getBytes("utf8")).map("%02x" format _).mkString
+
+  def callback[T](success: T => Unit, failure: Throwable => Unit) = new Callback[T] {
+    def onSuccess(item: T) = success(item)
+    def onFailure(err: Throwable) = failure(err)
+  }
+
+  def qos(int: Int) = QoS.values().filter(q => q.ordinal() == int).head
+
+  def subscribe(id: Int) = {
+    val client = getClient(config.subscriberPrefix, id).listener(new Listener {
+      def onPublish(topic: UTF8Buffer, body: Buffer, ack: Runnable) {
+        Reporter.messageArrived(topic.toString, body.getData)
+        ack.run()
+      }
+
+      def onConnected() {
+        Reporter.addSubscriber()
+      }
+
+      def onFailure(value: Throwable) { value.printStackTrace() }
+
+      def onDisconnected() {
+        Reporter.lostSubscriber()
+      }
+    })
+
+    client.connect(callback(_ => {
+      client.subscribe(Array(new Topic(config.subTopic(id), qos(config.subQos))),
+        callback(bytes => {}, _ => {}))
+    }, _ => {}))
+  }
+
+  def createPublisher(id: Int, actor: ActorRef) = {
+    val client = getClient(config.publisherPrefix, id)
+    client.listener(new Listener {
+      def onPublish(topic: UTF8Buffer, body: Buffer, ack: Runnable) {}
+
+      def onConnected() {
+        Reporter.addPublisher()
+      }
+
+      def onFailure(value: Throwable) { value.printStackTrace() }
+
+      def onDisconnected() {
+        Reporter.lostPublisher()
+      }
+    })
+    client.connect(callback(_ => actor ! Start(client), _ => {}))
+  }
 }
 
-case class Subscriber(prefix: String, id: Int) extends Client(prefix, id) {
+case class Start(client: CallbackConnection)
+case class Publish(client: CallbackConnection)
+
+case class Publisher(id: Int) extends Actor {
   import Config.config
-
-  client.subscribe(config.subTopic(id), config.subQos)
-  Reporter.addSubscriber()
-
-  protected def callback: MqttCallback = SubHandler
-}
-
-case class Publisher(prefix: String, id: Int) extends Client(prefix, id) with Actor {
-  import Config.config
+  import ExecutionContext.Implicits.global
 
   val sleepBetweenPublishes = config.publishRate
-  val topic = client.getTopic(config.pubTopic(id))
+  val qos = Client.qos(config.pubQos)
+  val publishCallback = Client.callback((_: Void) => Reporter.deliveryComplete(), _ => {})
   var iteration = 0
 
-  Reporter.addPublisher()
-
   def receive = {
-    case "publish" =>
+    case Start(client) =>
+      context.system.scheduler.schedule(0 millis, sleepBetweenPublishes millis) {
+        Try(self ! Publish(client)).recover {
+          case e: Throwable => e.printStackTrace()
+        }
+      }
+    case Publish(client) =>
       val payload = config.payload.get(id, iteration)
-      topic.publish(payload, config.pubQos, config.pubRetain)
+      client.publish(config.pubTopic(id), payload, qos, config.pubRetain, publishCallback)
       Reporter.sentPublish()
       iteration += 1
-  }
-
-  protected def callback: MqttCallback = PubHandler
-}
-
-class PublisherFactory extends Actor {
-  import Config.config
-  import scala.concurrent.ExecutionContext.Implicits.global
-
-  val prefix = config.publisherPrefix
-  var iteration = 0
-  context.system.scheduler.schedule(0 millis, config.connectRate millis) {
-    iteration += 1
-    if (iteration > config.publishers)
-      self ! PoisonPill
-    else
-      self ! iteration
-  }
-
-  def receive = {
-    case i: Int =>
-      val publisher = context.system.actorOf(Props(classOf[Publisher], prefix, i).withDispatcher("publish-dispatcher"))
-      context.system.scheduler.schedule(config.publishRate millis, config.publishRate millis) {
-        publisher ! "publish"
-      }
-  }
-}
-
-abstract class LoadTestMqttCallback extends MqttCallback {
-  def deliveryComplete(deliveryToken: IMqttDeliveryToken) = Reporter.deliveryComplete(deliveryToken)
-  def messageArrived(topic: String, message: MqttMessage) = Reporter.messageArrived(topic, message)
-}
-
-object SubHandler extends LoadTestMqttCallback {
-  def connectionLost(error: Throwable) {
-    error.printStackTrace()
-    Reporter.lostSubscriber()
-  }
-}
-
-object PubHandler extends LoadTestMqttCallback {
-  def connectionLost(error: Throwable) {
-    error.printStackTrace()
-    Reporter.lostPublisher()
   }
 }
 
@@ -113,8 +121,8 @@ object Reporter {
   var lastArrived = 0
 
   def sentPublish() = pubSent.incrementAndGet()
-  def deliveryComplete(deliveryToken: IMqttDeliveryToken) = pubComplete.incrementAndGet()
-  def messageArrived(topic: String, message: MqttMessage) = subArrived.incrementAndGet()
+  def deliveryComplete() = pubComplete.incrementAndGet()
+  def messageArrived(topic: String, message: Array[Byte]) = subArrived.incrementAndGet()
   def connectionLost(error: Throwable) {error.printStackTrace()}
 
   var publishers = 0
@@ -122,32 +130,36 @@ object Reporter {
 
   def addPublisher() {publishers += 1}
   def addSubscriber() {subscribers += 1}
-  def lostPublisher() {publishers -= 1}
-  def lostSubscriber() {subscribers -= 1}
+  def lostPublisher() { publishers -= 1 }
+  def lostSubscriber() { subscribers -= 1 }
 
-  def run() {
-    println("Elapsed (ms),Sent (msgs/s),Published (msgs/s),Consumed (msgs/s),Num Publishers,Num Subscribers")
+  def doReport() {
+    val now = DateTime.now().millisOfDay().get()
+    val sent = pubSent.get()
+    val complete = pubComplete.get()
+    val arrived = subArrived.get()
 
-    while(true) {
-      Thread.sleep(1000)
+    val elapsedMs = now - start
+    val sentPs = sent - lastSent
+    val publishedPs = complete - lastComplete
+    val consumedPs = arrived - lastArrived
 
-      val now = DateTime.now().millisOfDay().get()
-      val sent = pubSent.get()
-      val complete = pubComplete.get()
-      val arrived = subArrived.get()
+    println(s"$elapsedMs,$sentPs,$publishedPs,$consumedPs,$publishers,$subscribers")
 
-      val elapsedMs = now - start
-      val sentPs = sent - lastSent
-      val publishedPs = complete - lastComplete
-      val consumedPs = arrived - lastArrived
+    lastTime = now
+    lastSent = sent
+    lastComplete = complete
+    lastArrived = arrived
+  }
+}
 
-      println(s"$elapsedMs,$sentPs,$publishedPs,$consumedPs,$publishers,$subscribers")
+object Report
 
-      lastTime = now
-      lastSent = sent
-      lastComplete = complete
-      lastArrived = arrived
-    }
+class Reporter extends Actor {
+  println("Elapsed (ms),Sent (msgs/s),Published (msgs/s),Consumed (msgs/s),Num Publishers,Num Subscribers")
+
+  def receive = {
+    case Report => Reporter.doReport()
   }
 }
 
@@ -157,22 +169,29 @@ object LoadTest extends App {
   java.security.Security.setProperty("networkaddress.cache.ttl" , "0")
 
   import Config.config
+  import ExecutionContext.Implicits.global
 
   val system = ActorSystem("LoadTest")
-  system.actorOf(Props[PublisherFactory])
+  val reporter = system.actorOf(Props[Reporter], "reporter")
+  system.scheduler.schedule(1 second, 1 second) {
+    reporter ! Report
+  }
 
-  new Thread(new Runnable { def run() {launchSubscribers()} }).start()
-
-  def launchSubscribers(start: Int = 0) {
-    for (i <- (start + 1) to config.subscribers) {
-      try {
-        Subscriber(config.subscriberPrefix, i)
-      } catch {
-        case e: Throwable => e.printStackTrace()
-      }
-      Thread.sleep(config.connectRate)
+  for (i <- 1 to config.publishers) {
+    try {
+      val publisher = system.actorOf(Props(classOf[Publisher], i).withDispatcher("publish-dispatcher"), s"publisher-$i")
+      Client.createPublisher(i, publisher)
+    } catch {
+      case e: Throwable => e.printStackTrace()
     }
   }
 
-  Reporter.run()
+  for (i <- 1 to config.subscribers) {
+    try {
+      Client.subscribe(i)
+    } catch {
+      case e: Throwable => e.printStackTrace()
+    }
+    Thread.sleep(config.connectRate)
+  }
 }
