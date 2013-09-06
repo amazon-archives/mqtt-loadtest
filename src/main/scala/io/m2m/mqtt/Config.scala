@@ -24,7 +24,8 @@ object Config {
       conf.getInt("subscribers.qos"),
       conf.getBoolean("publishers.retain"),
       conf.getString("publishers.client-id-prefix"),
-      conf.getString("subscribers.client-id-prefix")
+      conf.getString("subscribers.client-id-prefix"),
+      conf.getInt("keep-alive").toShort
     )
   }
 
@@ -34,7 +35,7 @@ object Config {
 case class Config(host: String, port: Int, user: Option[String], password: Option[String],
                   pubTopic: String, subTopic: String, publishers: Int, subscribers: Int, connectRate: Long,
                   publishRate: Long, payload: MessageSource, pubQos: Int, subQos: Int, pubRetain: Boolean,
-                  publisherPrefix: String, subscriberPrefix: String) {
+                  publisherPrefix: String, subscriberPrefix: String, keepAlive: Short) {
 
 
   private def templateTopic(topic: String, id: Int) = topic.replaceAll("\\$num", id.toString)
