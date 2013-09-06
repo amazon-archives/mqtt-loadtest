@@ -191,6 +191,7 @@ object LoadTest extends App {
     } catch {
       case e: Throwable => e.printStackTrace()
     }
+    Thread.sleep(config.connectRate)
   }
 
   for (i <- 1 to config.subscribers) {
