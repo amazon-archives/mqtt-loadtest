@@ -146,11 +146,11 @@ object Reporter {
     val elapsedMs = now - start
     val sentPs = sent - lastSent
     val publishedPs = complete - lastComplete
-    val inFlight = sent - complete
+    //val inFlight = sent - complete
     val consumedPs = arrived - lastArrived
     val errorsPs = currentErrors - lastErrors
 
-    println(s"$elapsedMs,$sentPs,$publishedPs,$consumedPs,$inFlight,$errorsPs,$publishers,$subscribers")
+    println(s"$elapsedMs,$sentPs,$publishedPs,$consumedPs,$errorsPs,$publishers,$subscribers")
 
     lastTime = now
     lastSent = sent
@@ -163,7 +163,7 @@ object Reporter {
 object Report
 
 class Reporter extends Actor {
-  println("Elapsed (ms),Sent (msgs/s),Published (msgs/s),Consumed (msgs/s),In Flight,Errors (msgs/s),Num Publishers,Num Subscribers")
+  println("Elapsed (ms),Sent (msgs/s),Published (msgs/s),Consumed (msgs/s),Num Publishers,Num Subscribers")
 
   def receive = {
     case Report => Reporter.doReport()
