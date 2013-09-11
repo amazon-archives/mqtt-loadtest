@@ -18,9 +18,19 @@ object WebServer {
     }
   }
 
-  val server = new webserver.WebServer(WebServerConfig(), routes, system)
+  val akkaConfig = new WebServerConfig(system.settings.config, "http")
+  val server = new webserver.WebServer(akkaConfig, routes, system)
+  println(akkaConfig.hostname)
+
+  def enabled =
+    if (system.settings.config.hasPath("http.enabled"))
+      system.settings.config.getBoolean("http.enabled")
+    else
+      true
 
   def start() {
+    if (!enabled) return
+
     server.start()
 
     Runtime.getRuntime.addShutdownHook(new Thread() {
