@@ -25,7 +25,7 @@ object Client {
     mqtt.setCleanSession(true)
     if (config.user.isDefined) mqtt.setUserName(config.user.get)
     if (config.password.isDefined) mqtt.setPassword(md5(config.password.get))
-    mqtt.setKeepAlive(30)
+    mqtt.setKeepAlive(config.keepAlive)
     mqtt.callbackConnection()
   }
 
@@ -214,6 +214,7 @@ object LoadTest extends App {
     } catch {
       case e: Throwable => e.printStackTrace()
     }
+    Thread.sleep(config.connectRate)
   }
 
   for (i <- 1 to config.subscribers) {
