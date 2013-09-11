@@ -27,5 +27,7 @@ libraryDependencies ++= Seq(
 	"org.scala-lang" % "scala-reflect" % "2.10.2",
 	"org.joda" % "joda-convert" % "1.4",
 	"joda-time" % "joda-time" % "2.3",
-	"org.fusesource.mqtt-client" % "mqtt-client" % "1.5"
+	"org.fusesource.mqtt-client" % "mqtt-client" % "1.5",
+	"org.json4s" %% "json4s-native" % "3.1.0",
+	"org.mashupbots.socko" %% "socko-webserver" % "0.3.0"
 )

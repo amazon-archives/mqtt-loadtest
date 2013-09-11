@@ -130,34 +130,55 @@ object Reporter {
 
   var publishers = 0
   var subscribers = 0
+  var lastReport: Option[Report] = None
 
   def addPublisher() {publishers += 1}
   def addSubscriber() {subscribers += 1}
   def lostPublisher() { publishers -= 1 }
   def lostSubscriber() { subscribers -= 1 }
 
-  def doReport() {
+  def getReport(): Report = {
     val now = DateTime.now().millisOfDay().get()
     val sent = pubSent.get()
     val complete = pubComplete.get()
     val arrived = subArrived.get()
     val currentErrors = errors.get()
 
-    val elapsedMs = now - start
-    val sentPs = sent - lastSent
-    val publishedPs = complete - lastComplete
-    val inFlight = sent - complete
-    val consumedPs = arrived - lastArrived
-    val errorsPs = currentErrors - lastErrors
-
-    println(s"$elapsedMs,$sentPs,$publishedPs,$consumedPs,$inFlight,$errorsPs,$publishers,$subscribers")
+    val report = Report(
+      now - start,
+      sent - lastSent,
+      complete - lastComplete,
+      sent - complete,
+      arrived - lastArrived,
+      currentErrors - lastErrors,
+      publishers,
+      subscribers
+    )
 
     lastTime = now
     lastSent = sent
     lastComplete = complete
     lastArrived = arrived
     lastErrors = currentErrors
+
+    report
   }
+
+  def doReport() {
+    lastReport = Some(getReport())
+    println(lastReport.get.csv)
+  }
+}
+
+case class Report(elapsedMs: Int, sentPs: Int, publishedPs: Int, consumedPs: Int, inFlight: Int, errorsPs: Int, publishers: Int, subscribers: Int) {
+  import org.json4s.NoTypeHints
+  import org.json4s.native.Serialization.{write, formats}
+
+  implicit val fmts = formats(NoTypeHints)
+
+  def csv = s"$elapsedMs,$sentPs,$publishedPs,$consumedPs,$inFlight,$errorsPs,$publishers,$subscribers"
+
+  def json = write(this)
 }
 
 object Report
@@ -179,6 +200,8 @@ object LoadTest extends App {
   import ExecutionContext.Implicits.global
 
   val system = ActorSystem("LoadTest")
+  WebServer.start()
+
   val reporter = system.actorOf(Props[Reporter], "reporter")
   system.scheduler.schedule(1 second, 1 second) {
     reporter ! Report
