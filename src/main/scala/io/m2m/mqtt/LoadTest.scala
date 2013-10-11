@@ -209,7 +209,7 @@ object LoadTest extends App {
 
   for (i <- 1 to config.publishers) {
     try {
-      val publisher = system.actorOf(Props(classOf[Publisher], i).withDispatcher("publish-dispatcher"), s"publisher-$i")
+      val publisher = system.actorOf(Props(classOf[Publisher], i).withDispatcher("publishers.dispatcher"), s"publisher-$i")
       Client.createPublisher(i, publisher)
     } catch {
       case e: Throwable => e.printStackTrace()
