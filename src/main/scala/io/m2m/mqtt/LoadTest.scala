@@ -14,7 +14,7 @@ import scala.util.Try
 object Client {
   import Config.config
 
-  private def getClient(prefix: String, id: Int) = {
+  private def getClient(prefix: String, id: Int, clean: Boolean) = {
     val mqtt = new MQTT()
     mqtt.setTracer(new Tracer {
       override def onReceive(frame: MQTTFrame) {
@@ -22,7 +22,7 @@ object Client {
     })
     mqtt.setHost(config.host, config.port)
     mqtt.setClientId(prefix + id)
-    mqtt.setCleanSession(true)
+    mqtt.setCleanSession(clean)
     if (config.user.isDefined) mqtt.setUserName(config.user.get)
     if (config.password.isDefined) mqtt.setPassword(md5(config.password.get))
     mqtt.setKeepAlive(config.keepAlive)
@@ -40,7 +40,8 @@ object Client {
   def qos(int: Int) = QoS.values().filter(q => q.ordinal() == int).head
 
   def subscribe(id: Int) = {
-    val client = getClient(config.subscriberPrefix, id).listener(new Listener {
+    val clean = config.subClean
+    val client = getClient(config.subscriberPrefix, id, clean).listener(new Listener {
       def onPublish(topic: UTF8Buffer, body: Buffer, ack: Runnable) {
         Reporter.messageArrived(topic.toString, body.getData)
         ack.run()
@@ -64,7 +65,7 @@ object Client {
   }
 
   def createPublisher(id: Int, actor: ActorRef) = {
-    val client = getClient(config.publisherPrefix, id)
+    val client = getClient(config.publisherPrefix, id, config.pubClean)
     client.listener(new Listener {
       def onPublish(topic: UTF8Buffer, body: Buffer, ack: Runnable) {}
 
