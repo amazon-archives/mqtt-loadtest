@@ -7,20 +7,25 @@ import scala.util.{Random, Try}
 import scala.collection.JavaConversions._
 
 object Config {
-  private def getConfig: Config = {
-    val conf = ConfigFactory.load()
-
-    val payload: MessageSource with Product with Serializable = {
-      def getFile(cfg: TSConfig) = FileMessage(cfg.getString("path"))
-      def getUTF(cfg: TSConfig) = Utf8Message(cfg.getString("publishers.payload"))
-
-      val fm = Try(getFile(conf.atPath("publishers.payload")))
-      val utf = fm.orElse(Try(getUTF(conf)))
-      val gen = utf.orElse(Try(GeneratedMessage(conf.getInt("publishers.payload.size"))))
-
-      gen.getOrElse(GeneratedMessage(1024))
+  def payload(config: TSConfig): MessageSource = {
+    def getFile(cfg: TSConfig) = FileMessage(cfg.getString("file"))
+    def getUTF(cfg: TSConfig) = Utf8Message(cfg.getString("text"))
+    def getGenerated(cfg: TSConfig) = GeneratedMessage(cfg.getInt("size"))
+    def getSamples(cfg: TSConfig) = SampledMessages.fromRaw {
+      cfg.getConfigList("samples")
+        .map(x => Try(x.getDouble("percent")).toOption.map(_ / 100) -> payload(x))
+        .toList
     }
 
+    val fm = Try(getFile(config))
+    val utf = fm.orElse(Try(getUTF(config)))
+    val gen = utf.orElse(Try(getGenerated(config)))
+    val samples = gen.orElse(Try(getSamples(config)))
+
+    samples.getOrElse(GeneratedMessage(1024))
+  }
+
+  def getConfig(conf: TSConfig): Config = {
     Config(
       conf.getString("host"),
       conf.getInt("port"),
@@ -32,7 +37,7 @@ object Config {
       conf.getInt("subscribers.count"),
       conf.getMilliseconds("millis-between-connects"),
       conf.getMilliseconds("publishers.millis-between-publish"),
-      payload,
+      payload(conf.getConfig("publishers.payload")),
       conf.getInt("publishers.qos"),
       conf.getInt("subscribers.qos"),
       conf.getBoolean("publishers.retain"),
@@ -44,7 +49,7 @@ object Config {
     )
   }
 
-  lazy val config = getConfig
+  lazy val config = getConfig(ConfigFactory.load())
 }
 
 case class Config(host: String, port: Int, user: Option[String], password: Option[String],
@@ -71,7 +76,7 @@ case class Utf8Message(msg: String) extends MessageSource {
 }
 
 case class FileMessage(file: String) extends MessageSource {
-  val fileBytes = Streamable.bytes(new FileInputStream(file))
+  lazy val fileBytes = Streamable.bytes(new FileInputStream(file))
   def get(clientNum: Int, iteration: Int) = fileBytes
 }
 
@@ -80,6 +85,38 @@ case class GeneratedMessage(size: Int) extends MessageSource {
     val bytes = new Array[Byte](size)
     Random.nextBytes(bytes)
     bytes
+  }
+}
+
+case class Sample(msg: MessageSource, lower: Double, upper: Double)
+case class SampledMessages(samples: List[Sample]) extends MessageSource {
+  def getMessage(n: Double) = samples
+    .find(m => m.lower <= n && n < m.upper)
+    .map(_.msg)
+    .getOrElse(GeneratedMessage(1024))
+
+  def get(clientNum: Int, iteration: Int) = {
+    val n = Random.nextDouble()
+    getMessage(n).get(clientNum, iteration)
+  }
+}
+
+object SampledMessages {
+  def fromRaw(messages: List[(Option[Double], MessageSource)]): SampledMessages = {
+    val (base, explicitSamples) = messages.filter(_._1.isDefined).foldLeft(0.0 -> List[Sample]()) {
+      case ((low, acc), (percent, msg)) =>
+        val hi = low + percent.get
+        hi -> (Sample(msg, low, hi) :: acc)
+    }
+
+    val remaining = messages.filter(!_._1.isDefined)
+    val remainingPercent = 1 - base
+    val size = remainingPercent / remaining.size
+    
+    val remainingSamples = remaining.map(_._2).zipWithIndex
+      .map{ case (msg, i) => Sample(msg, base + (size*i), base + (size*i) + size)}
+
+    SampledMessages(explicitSamples ++ remainingSamples)
   }
 }
 

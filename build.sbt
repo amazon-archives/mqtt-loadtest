@@ -29,5 +29,6 @@ libraryDependencies ++= Seq(
 	"joda-time" % "joda-time" % "2.3",
 	"org.fusesource.mqtt-client" % "mqtt-client" % "1.5",
 	"org.json4s" %% "json4s-native" % "3.1.0",
+	"org.scalatest" %% "scalatest" % "2.0.M5b" % "test",
 	"org.mashupbots.socko" %% "socko-webserver" % "0.3.0"
 )
