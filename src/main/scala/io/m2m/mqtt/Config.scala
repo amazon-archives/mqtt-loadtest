@@ -81,11 +81,13 @@ case class FileMessage(file: String) extends MessageSource {
 }
 
 case class GeneratedMessage(size: Int) extends MessageSource {
-  def get(clientNum: Int, iteration: Int) = {
+  lazy val msg = {
     val bytes = new Array[Byte](size)
     Random.nextBytes(bytes)
     bytes
   }
+
+  def get(clientNum: Int, iteration: Int) = msg
 }
 
 case class Sample(msg: MessageSource, lower: Double, upper: Double)
