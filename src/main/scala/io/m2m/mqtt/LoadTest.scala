@@ -149,8 +149,8 @@ object Reporter {
       now - start,
       sent - lastSent,
       complete - lastComplete,
-      sent - complete,
       arrived - lastArrived,
+      sent - complete,
       currentErrors - lastErrors,
       publishers,
       subscribers
