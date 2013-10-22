@@ -167,6 +167,7 @@ object Reporter {
 
   def doReport() {
     lastReport = Some(getReport())
+    SplunkLogger.send2Splunk(lastReport.get)
     println(lastReport.get.csv)
   }
 }
@@ -203,6 +204,7 @@ object LoadTest extends App {
   val system = ActorSystem("LoadTest")
   WebServer.start()
 
+
   val reporter = system.actorOf(Props[Reporter], "reporter")
   system.scheduler.schedule(1 second, 1 second) {
     reporter ! Report
@@ -226,4 +228,5 @@ object LoadTest extends App {
     }
     Thread.sleep(config.connectRate)
   }
+
 }

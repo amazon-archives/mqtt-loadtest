@@ -6,7 +6,22 @@ import java.io.FileInputStream
 import scala.util.{Random, Try}
 import scala.collection.JavaConversions._
 
+case class SplunkConfig(splunkUser: String, splunkPass: String, splunkUrl: String, splunkProject: String)
+
 object Config {
+  val configFactory = ConfigFactory.load()
+
+  val splunkConf = configFactory.getBoolean("splunk.enabled") match {
+    case true =>
+      val splunkUser = configFactory.getString("splunk.user")
+      val splunkPass = configFactory.getString("splunk.password")
+      val splunkUrl = configFactory.getString("splunk.url")
+      val splunkProject = configFactory.getString("splunk.project")
+      Option(SplunkConfig(splunkUser, splunkPass, splunkUrl, splunkProject))
+    case false => None
+  }
+  
+
   def payload(config: TSConfig): MessageSource = {
     def getFile(cfg: TSConfig) = FileMessage(cfg.getString("file"))
     def getUTF(cfg: TSConfig) = Utf8Message(cfg.getString("text"))
@@ -48,8 +63,8 @@ object Config {
       Try(conf.getBoolean("subscribers.clean-session")).getOrElse(true)
     )
   }
-
-  lazy val config = getConfig(ConfigFactory.load())
+  
+  lazy val config = getConfig(configFactory)
 }
 
 case class Config(host: String, port: Int, user: Option[String], password: Option[String],

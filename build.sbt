@@ -22,7 +22,7 @@ resolvers ++= Seq(
 
 libraryDependencies ++= Seq(
 	"com.typesafe.akka" %% "akka-actor" % "2.2.0",
-    "com.typesafe.akka" %% "akka-remote" % "2.2.0",
+  "com.typesafe.akka" %% "akka-remote" % "2.2.0",
 	"com.typesafe" % "config" % "1.0.2",
 	"org.scala-lang" % "scala-reflect" % "2.10.2",
 	"org.joda" % "joda-convert" % "1.4",
@@ -30,5 +30,7 @@ libraryDependencies ++= Seq(
 	"org.fusesource.mqtt-client" % "mqtt-client" % "1.5",
 	"org.json4s" %% "json4s-native" % "3.1.0",
 	"org.scalatest" %% "scalatest" % "2.0.M5b" % "test",
-	"org.mashupbots.socko" %% "socko-webserver" % "0.3.0"
+	"org.mashupbots.socko" %% "socko-webserver" % "0.3.0",
+	"net.databinder.dispatch" %% "dispatch-core" % "0.11.0",
+	"ch.qos.logback" % "logback-classic" %"1.0.1"
 )
