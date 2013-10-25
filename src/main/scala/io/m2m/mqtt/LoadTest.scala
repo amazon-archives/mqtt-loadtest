@@ -168,6 +168,10 @@ object Reporter {
 
   def doReport() {
     lastReport = Some(getReport())
+    if(lastReport.get.inFlight > 200000) {
+      println("Inflight message count over 200K, something is wrong killing test")
+      System.exit(1)
+    }
     SplunkLogger.send2Splunk(lastReport.get)
     println(lastReport.get.csv)
   }
