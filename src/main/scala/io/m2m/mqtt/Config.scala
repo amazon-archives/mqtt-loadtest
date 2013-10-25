@@ -60,7 +60,8 @@ object Config {
       conf.getString("subscribers.client-id-prefix"),
       conf.getInt("keep-alive").toShort,
       Try(conf.getBoolean("publishers.clean-session")).getOrElse(true),
-      Try(conf.getBoolean("subscribers.clean-session")).getOrElse(true)
+      Try(conf.getBoolean("subscribers.clean-session")).getOrElse(true),
+      conf.getBoolean("subscribers.shared")
     )
   }
   
@@ -70,15 +71,15 @@ object Config {
 case class Config(host: String, port: Int, user: Option[String], password: Option[String],
                   pubTopic: String, subTopic: String, publishers: Int, subscribers: Int, connectRate: Long,
                   publishRate: Long, payload: MessageSource, pubQos: Int, subQos: Int, pubRetain: Boolean,
-                  publisherPrefix: String, subscriberPrefix: String, keepAlive: Short,
-                  pubClean: Boolean, subClean: Boolean) {
+                  publisherPrefix: String, subscriberClientId: String, keepAlive: Short,
+                  pubClean: Boolean, subClean: Boolean, subShared: Boolean) {
 
 
   private def templateTopic(topic: String, id: Int) = topic.replaceAll("\\$num", id.toString)
 
   def pubTopic(id: Int): String = templateTopic(pubTopic, id)
   def subTopic(id: Int): String = templateTopic(subTopic, id)
-  def subscriberId(id: Int) = subscriberPrefix + id
+  def subscriberId(id: Int) = subscriberClientId + id
   def publisherId(id: Int) = publisherPrefix + id
 }
 

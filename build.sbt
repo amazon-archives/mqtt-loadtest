@@ -32,5 +32,6 @@ libraryDependencies ++= Seq(
 	"org.scalatest" %% "scalatest" % "2.0.M5b" % "test",
 	"org.mashupbots.socko" %% "socko-webserver" % "0.3.0",
 	"net.databinder.dispatch" %% "dispatch-core" % "0.11.0",
-	"ch.qos.logback" % "logback-classic" %"1.0.1"
+	"ch.qos.logback" % "logback-classic" %"1.0.1",
+	"net.sf.xenqtt" % "xenqtt" % "0.9.3"
 )

@@ -29,7 +29,7 @@ object Client {
     mqtt.callbackConnection()
   }
 
-  private def md5(str: String) =
+  def md5(str: String) =
     MessageDigest.getInstance("MD5").digest(str.getBytes("utf8")).map("%02x" format _).mkString
 
   def callback[T](success: T => Unit, failure: Throwable => Unit) = new Callback[T] {
@@ -41,9 +41,10 @@ object Client {
 
   def subscribe(id: Int) = {
     val clean = config.subClean
-    val client = getClient(config.subscriberPrefix, id, clean).listener(new Listener {
+    val client = getClient(config.subscriberClientId, id, clean).listener(new Listener {
       def onPublish(topic: UTF8Buffer, body: Buffer, ack: Runnable) {
-        Reporter.messageArrived(topic.toString, body.getData)
+        //println("Got data on "+ topic.toString)
+        Reporter.messageArrived(topic.toString)
         ack.run()
       }
 
@@ -125,7 +126,7 @@ object Reporter {
 
   def sentPublish() = pubSent.incrementAndGet()
   def deliveryComplete() = pubComplete.incrementAndGet()
-  def messageArrived(topic: String, message: Array[Byte]) = subArrived.incrementAndGet()
+  def messageArrived(topic: String) = subArrived.incrementAndGet()
   def connectionLost(error: Throwable) {error.printStackTrace()}
   def messageErred(error: Throwable) {errors.incrementAndGet()}
 
@@ -210,19 +211,24 @@ object LoadTest extends App {
     reporter ! Report
   }
 
-  for (i <- 1 to config.publishers) {
+  for (i <- 1 to config.subscribers) {
     try {
-      val publisher = system.actorOf(Props(classOf[Publisher], i).withDispatcher("publishers.dispatcher"), s"publisher-$i")
-      Client.createPublisher(i, publisher)
+      config.subShared match {
+        case true => 
+          val subscriber = system.actorOf(Props[SharedSubscriber].withDispatcher("subscribers.dispatcher"), s"subscriber-$i")
+          subscriber ! Init
+        case false => Client.subscribe(i)
+      }  
     } catch {
       case e: Throwable => e.printStackTrace()
     }
     Thread.sleep(config.connectRate)
   }
 
-  for (i <- 1 to config.subscribers) {
+  for (i <- 1 to config.publishers) {
     try {
-      Client.subscribe(i)
+      val publisher = system.actorOf(Props(classOf[Publisher], i).withDispatcher("publishers.dispatcher"), s"publisher-$i")
+      Client.createPublisher(i, publisher)
     } catch {
       case e: Throwable => e.printStackTrace()
     }
