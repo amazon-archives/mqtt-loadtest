@@ -9,6 +9,7 @@ import net.sf.xenqtt.message._
 
 case object MsgPerSec
 case object Init
+case object Sub
 
 class SharedSubscriber extends Actor {
   implicit val logger = LoggerFactory.getLogger(classOf[SharedSubscriber])
@@ -21,19 +22,14 @@ class SharedSubscriber extends Actor {
   val subQos = Config.config.subQos
   val clean = Config.config.subClean
 
+  val client = new AsyncMqttClient(url, new AsyncSubscriber(), 50)
+  val subscriptions = List(new Subscription(subTopic, QoS.AT_LEAST_ONCE))
+
   def receive = {
-    case Init => init
+    case Init => client.connect(clientid, clean, username, pw)
+    case Sub => client.subscribe(subscriptions)
   }
 
-  def init = {
-
-    val client = new AsyncMqttClient("tcp://pnet.m2m.io:1883", new AsyncSubscriber(), 50)
-
-    client.connect(clientid, clean, username, pw)
-
-    val subscriptions = List(new Subscription(subTopic, QoS.AT_LEAST_ONCE))
-    client.subscribe(subscriptions)
-  }
 
   class AsyncSubscriber extends AsyncClientListener {
 
@@ -58,7 +54,9 @@ class SharedSubscriber extends Actor {
     override def connected(client: MqttClient, returnCode: ConnectReturnCode) = {
       returnCode match {
         case rc if rc != ConnectReturnCode.ACCEPTED => println("Unable to connect to the broker. Reason: " + rc)
-        case _ => Reporter.addSubscriber()
+        case _ => 
+        	Reporter.addSubscriber()
+        	self ! Sub
       }
     }
 
