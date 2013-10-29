@@ -172,12 +172,17 @@ object Reporter {
       println("Inflight message count over 200K, something is wrong killing test")
       System.exit(1)
     }
-    SplunkLogger.send2Splunk(lastReport.get)
+    SplunkLogger.report2Splunk(lastReport.get)
     println(lastReport.get.csv)
   }
 }
 
-case class Report(elapsedMs: Int, sentPs: Int, publishedPs: Int, consumedPs: Int, inFlight: Int, errorsPs: Int, publishers: Int, subscribers: Int) {
+abstract class JsonSerialiazable {
+  def json: String
+}
+
+case class Report(elapsedMs: Int, sentPs: Int, publishedPs: Int, consumedPs: Int, inFlight: Int, 
+  errorsPs: Int, publishers: Int, subscribers: Int) extends JsonSerialiazable {
   import org.json4s.NoTypeHints
   import org.json4s.native.Serialization.{write, formats}
 
@@ -214,6 +219,9 @@ object LoadTest extends App {
   system.scheduler.schedule(1 second, 1 second) {
     reporter ! Report
   }
+
+  val queueReporting = system.actorOf(Props[QueueSubscriber].withDispatcher("subscribers.dispatcher"), s"queue-subscriber")
+  queueReporting ! Init
 
   for (i <- 1 to config.subscribers) {
     try {

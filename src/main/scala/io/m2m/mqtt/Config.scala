@@ -61,7 +61,9 @@ object Config {
       conf.getInt("keep-alive").toShort,
       Try(conf.getBoolean("publishers.clean-session")).getOrElse(true),
       Try(conf.getBoolean("subscribers.clean-session")).getOrElse(true),
-      conf.getBoolean("subscribers.shared")
+      conf.getBoolean("subscribers.shared"),
+      conf.getString("queue-monitor.clientid"),
+      conf.getString("queue-monitor.topic")
     )
   }
   
@@ -72,7 +74,7 @@ case class Config(host: String, port: Int, user: Option[String], password: Optio
                   pubTopic: String, subTopic: String, publishers: Int, subscribers: Int, connectRate: Long,
                   publishRate: Long, payload: MessageSource, pubQos: Int, subQos: Int, pubRetain: Boolean,
                   publisherPrefix: String, subscriberClientId: String, keepAlive: Short,
-                  pubClean: Boolean, subClean: Boolean, subShared: Boolean) {
+                  pubClean: Boolean, subClean: Boolean, subShared: Boolean, queueClientid: String, queueTopic: String) {
 
 
   private def templateTopic(topic: String, id: Int) = topic.replaceAll("\\$num", id.toString)

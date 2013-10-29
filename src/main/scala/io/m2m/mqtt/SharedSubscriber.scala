@@ -7,9 +7,20 @@ import net.sf.xenqtt.client._
 import net.sf.xenqtt.message._
 
 
-case object MsgPerSec
-case object Init
-case object Sub
+case class SubscribingReporter() extends ClientReporter {
+	def reportLostConnection {
+  	Reporter.lostSubscriber()
+  }
+
+  def reportNewConnection {
+  	Reporter.addSubscriber()
+  }
+
+  def reportMessageArrived(message: PublishMessage) {
+  	Reporter.messageArrived(message.getTopic())
+  }
+}
+
 
 class SharedSubscriber extends Actor {
   implicit val logger = LoggerFactory.getLogger(classOf[SharedSubscriber])
@@ -22,7 +33,7 @@ class SharedSubscriber extends Actor {
   val subQos = Config.config.subQos
   val clean = Config.config.subClean
 
-  val client = new AsyncMqttClient(url, new AsyncSubscriber(), 50)
+  val client = new AsyncMqttClient(url, new XenqttCallback(self, SubscribingReporter()), 50)
   val subscriptions = List(new Subscription(subTopic, QoS.AT_LEAST_ONCE))
 
   def receive = {
@@ -30,49 +41,4 @@ class SharedSubscriber extends Actor {
     case Sub => client.subscribe(subscriptions)
   }
 
-
-  class AsyncSubscriber extends AsyncClientListener {
-
-    override def publishReceived(client: MqttClient, message: PublishMessage) = {
-      Reporter.messageArrived(message.getTopic)
-      message.ack
-    }
-
-    override def disconnected(client: MqttClient, cause: Throwable, reconnecting: Boolean) = {
-    	Reporter.lostSubscriber()
-      Option(cause) match {
-        case Some(ex) => logger.error("Disconnected Exception", ex)
-        case None => logger.info("Got Disconneted Unknown")
-      }
-
-      reconnecting match {
-        case true => logger.info("Attempting to reconnect")
-        case false =>
-      }
-    }
-
-    override def connected(client: MqttClient, returnCode: ConnectReturnCode) = {
-      returnCode match {
-        case rc if rc != ConnectReturnCode.ACCEPTED => println("Unable to connect to the broker. Reason: " + rc)
-        case _ => 
-        	Reporter.addSubscriber()
-        	self ! Sub
-      }
-    }
-
-    override def published(client: MqttClient, message: PublishMessage) = {
-
-    }
-
-    override def subscribed(client: MqttClient, requestedSubscriptions: Array[Subscription],
-      grantedSubscriptions: Array[Subscription], requestsGranted: Boolean) = requestsGranted match {
-      case false => logger.error("Unable to subscribe to the following subscriptions: " + requestedSubscriptions.deep.mkString("\n"))
-      case true => logger.info("Granted subscriptions: " + grantedSubscriptions.deep.mkString("\n"))
-    }
-
-    override def unsubscribed(client: MqttClient, topics: Array[String]) = {
-
-    }
-
-  }
 }
