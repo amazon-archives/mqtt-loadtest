@@ -220,8 +220,8 @@ object LoadTest extends App {
     reporter ! Report
   }
 
-  val queueReporting = system.actorOf(Props[QueueSubscriber].withDispatcher("subscribers.dispatcher"), s"queue-subscriber")
-  queueReporting ! Init
+  //val queueReporting = system.actorOf(Props[QueueSubscriber].withDispatcher("subscribers.dispatcher"), s"queue-subscriber")
+  //queueReporting ! Init
 
   for (i <- 1 to config.subscribers) {
     try {
