@@ -58,12 +58,12 @@ object Config {
       conf.getBoolean("publishers.retain"),
       conf.getString("publishers.client-id-prefix"),
       conf.getString("subscribers.client-id-prefix"),
-      conf.getInt("keep-alive").toShort,
       Try(conf.getBoolean("publishers.clean-session")).getOrElse(true),
       Try(conf.getBoolean("subscribers.clean-session")).getOrElse(true),
       conf.getBoolean("subscribers.shared"),
       conf.getString("queue-monitor.clientid"),
-      conf.getString("queue-monitor.topic")
+      conf.getString("queue-monitor.topic"),
+      if (conf.hasPath("subscribers.custom-host")) Some(conf.getString("subscribers.custom-host")) else None
     )
   }
   
@@ -73,8 +73,9 @@ object Config {
 case class Config(host: String, port: Int, user: Option[String], password: Option[String],
                   pubTopic: String, subTopic: String, publishers: Int, subscribers: Int, connectRate: Long,
                   publishRate: Long, payload: MessageSource, pubQos: Int, subQos: Int, pubRetain: Boolean,
-                  publisherPrefix: String, subscriberClientId: String, keepAlive: Short,
-                  pubClean: Boolean, subClean: Boolean, subShared: Boolean, queueClientid: String, queueTopic: String) {
+                  publisherPrefix: String, subscriberClientId: String,
+                  pubClean: Boolean, subClean: Boolean, subShared: Boolean, queueClientid: String, queueTopic: String,
+                  subHost: Option[String]) {
 
 
   private def templateTopic(topic: String, id: Int) = topic.replaceAll("\\$num", id.toString)

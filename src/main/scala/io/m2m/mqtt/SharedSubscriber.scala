@@ -25,7 +25,8 @@ case class SubscribingReporter() extends ClientReporter {
 class SharedSubscriber extends Actor {
   implicit val logger = LoggerFactory.getLogger(classOf[SharedSubscriber])
 
-  val url = s"tcp://${Config.config.host}:${Config.config.port}"
+  val host = Config.config.subHost.getOrElse(Config.config.host)
+  val url = s"tcp://$host:${Config.config.port}"
   val username = Config.config.user.get
   val pw = Client.md5(Config.config.password.get)
   val clientid = Config.config.subscriberClientId

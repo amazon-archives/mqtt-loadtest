@@ -25,7 +25,7 @@ object Client {
     mqtt.setCleanSession(clean)
     if (config.user.isDefined) mqtt.setUserName(config.user.get)
     if (config.password.isDefined) mqtt.setPassword(md5(config.password.get))
-    mqtt.setKeepAlive(config.keepAlive)
+    mqtt.setKeepAlive(30)
     mqtt.callbackConnection()
   }
 
