@@ -2,7 +2,7 @@ package io.m2m.mqtt
 
 import org.joda.time.DateTime
 import java.security.MessageDigest
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
 import akka.actor._
 import scala.concurrent.duration._
 import org.fusesource.mqtt.client._
@@ -93,7 +93,10 @@ case class Publisher(id: Int) extends Actor {
 
   val sleepBetweenPublishes = config.publishers.rate
   val qos = Client.qos(config.publishers.qos)
-  val publishCallback = Client.callback((_: Void) => Reporter.deliveryComplete(), Reporter.messageErred)
+  def publishCallback = {
+    val startNanos = System.nanoTime()
+    Client.callback((_: Void) => Reporter.deliveryComplete(System.nanoTime() - startNanos), Reporter.messageErred)
+  }
   var iteration = 0
 
   def receive = {
@@ -115,17 +118,22 @@ object Reporter {
   val start = DateTime.now().millisOfDay().get()
   val pubSent = new AtomicInteger()
   val pubComplete = new AtomicInteger()
+  val pubAckTime = new AtomicLong()
   val subArrived = new AtomicInteger()
   val errors = new AtomicInteger()
 
   var lastTime = start
   var lastSent = 0
   var lastComplete = 0
+  var lastAckTime = 0L
   var lastArrived = 0
   var lastErrors = 0
 
   def sentPublish() = pubSent.incrementAndGet()
-  def deliveryComplete() = pubComplete.incrementAndGet()
+  def deliveryComplete(elapsedNanos: Long) = {
+    pubAckTime.addAndGet(elapsedNanos)
+    pubComplete.incrementAndGet()
+  }
   def messageArrived(topic: String) = subArrived.incrementAndGet()
   def connectionLost(error: Throwable) {error.printStackTrace()}
   def messageErred(error: Throwable) {errors.incrementAndGet()}
@@ -143,6 +151,7 @@ object Reporter {
     val now = DateTime.now().millisOfDay().get()
     val sent = pubSent.get()
     val complete = pubComplete.get()
+    val ackTime = pubAckTime.get()
     val arrived = subArrived.get()
     val currentErrors = errors.get()
 
@@ -152,6 +161,7 @@ object Reporter {
       complete - lastComplete,
       arrived - lastArrived,
       sent - complete,
+      ((ackTime - lastAckTime).toDouble / (arrived - lastArrived)) / 1000000,
       currentErrors - lastErrors,
       publishers,
       subscribers
@@ -160,6 +170,7 @@ object Reporter {
     lastTime = now
     lastSent = sent
     lastComplete = complete
+    lastAckTime = ackTime
     lastArrived = arrived
     lastErrors = currentErrors
 
@@ -182,13 +193,13 @@ abstract class JsonSerialiazable {
 }
 
 case class Report(elapsedMs: Int, sentPs: Int, publishedPs: Int, consumedPs: Int, inFlight: Int, 
-  errorsPs: Int, publishers: Int, subscribers: Int) extends JsonSerialiazable {
+  avgAckMillis: Double, errorsPs: Int, publishers: Int, subscribers: Int) extends JsonSerialiazable {
   import org.json4s.NoTypeHints
   import org.json4s.native.Serialization.{write, formats}
 
   implicit val fmts = formats(NoTypeHints)
 
-  def csv = s"$elapsedMs,$sentPs,$publishedPs,$consumedPs,$inFlight,$errorsPs,$publishers,$subscribers"
+  def csv = f"$elapsedMs,$sentPs,$publishedPs,$consumedPs,$inFlight,$avgAckMillis%.3f,$errorsPs,$publishers,$subscribers"
 
   def json = write(this)
 }
@@ -196,7 +207,7 @@ case class Report(elapsedMs: Int, sentPs: Int, publishedPs: Int, consumedPs: Int
 object Report
 
 class Reporter extends Actor {
-  println("Elapsed (ms),Sent (msgs/s),Published (msgs/s),Consumed (msgs/s),In Flight,Errors (msgs/s),Num Publishers,Num Subscribers")
+  println("Elapsed (ms),Sent (msgs/s),Published (msgs/s),Consumed (msgs/s),In Flight,Avg Ack (ms),Errors (msgs/s),Num Publishers,Num Subscribers")
 
   def receive = {
     case Report => Reporter.doReport()

@@ -47,7 +47,7 @@ class XenqttCallback(ref: ActorRef, reporter: ClientReporter) extends AsyncClien
     }
 
     override def published(client: MqttClient, message: PublishMessage) = {
-    	Reporter.deliveryComplete()
+    	Reporter.deliveryComplete(0L)
     }
 
     override def subscribed(client: MqttClient, requestedSubscriptions: Array[Subscription],
