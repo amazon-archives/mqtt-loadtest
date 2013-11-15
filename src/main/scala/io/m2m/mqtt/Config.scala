@@ -46,44 +46,58 @@ object Config {
       conf.getInt("port"),
       if (conf.hasPath("username")) Some(conf.getString("username")) else None,
       if (conf.hasPath("password")) Some(conf.getString("password")) else None,
-      conf.getString("publishers.topic"),
+      PublisherConfig(
+        conf.getString("publishers.topic"),
+        conf.getInt("publishers.count"),
+        conf.getMilliseconds("publishers.millis-between-publish"),
+        payload(conf.getConfig("publishers.payload")),
+        conf.getInt("publishers.qos"),
+        conf.getBoolean("publishers.retain"),
+        conf.getString("publishers.client-id-prefix"),
+        Try(conf.getBoolean("publishers.clean-session")).getOrElse(true)
+      ),
       conf.getString("subscribers.topic"),
-      conf.getInt("publishers.count"),
       conf.getInt("subscribers.count"),
       conf.getMilliseconds("millis-between-connects"),
-      conf.getMilliseconds("publishers.millis-between-publish"),
-      payload(conf.getConfig("publishers.payload")),
-      conf.getInt("publishers.qos"),
       conf.getInt("subscribers.qos"),
-      conf.getBoolean("publishers.retain"),
-      conf.getString("publishers.client-id-prefix"),
       conf.getString("subscribers.client-id-prefix"),
-      Try(conf.getBoolean("publishers.clean-session")).getOrElse(true),
       Try(conf.getBoolean("subscribers.clean-session")).getOrElse(true),
       conf.getBoolean("subscribers.shared"),
       conf.getString("queue-monitor.clientid"),
       conf.getString("queue-monitor.topic"),
-      if (conf.hasPath("subscribers.custom-host")) Some(conf.getString("subscribers.custom-host")) else None
+      if (conf.hasPath("subscribers.custom-host")) Some(conf.getString("subscribers.custom-host")) else None,
+      Try(conf.getBoolean("pwNeedsHashing")).getOrElse(true)
     )
   }
   
   lazy val config = getConfig(configFactory)
 }
 
-case class Config(host: String, port: Int, user: Option[String], password: Option[String],
-                  pubTopic: String, subTopic: String, publishers: Int, subscribers: Int, connectRate: Long,
-                  publishRate: Long, payload: MessageSource, pubQos: Int, subQos: Int, pubRetain: Boolean,
-                  publisherPrefix: String, subscriberClientId: String,
-                  pubClean: Boolean, subClean: Boolean, subShared: Boolean, queueClientid: String, queueTopic: String,
-                  subHost: Option[String]) {
+case class PublisherConfig(topic: String, count: Int, rate: Long, payload: MessageSource, qos: Int, retain: Boolean,
+                            idPrefix: String, cleanSession: Boolean)
+
+case class Config(host: String, port: Int, user: Option[String], password: Option[String], publishers: PublisherConfig,
+                  subTopic: String, subscribers: Int, connectRate: Long, subQos: Int, subscriberClientId: String,
+                  subClean: Boolean, subShared: Boolean, queueClientid: String, queueTopic: String,
+                  subHost: Option[String], pwNeedsHashing: Boolean) {
 
 
   private def templateTopic(topic: String, id: Int) = topic.replaceAll("\\$num", id.toString)
 
-  def pubTopic(id: Int): String = templateTopic(pubTopic, id)
+  def pubTopic(id: Int): String = templateTopic(publishers.topic, id)
   def subTopic(id: Int): String = templateTopic(subTopic, id)
   def subscriberId(id: Int) = subscriberClientId + id
-  def publisherId(id: Int) = publisherPrefix + id
+  def publisherId(id: Int) = publishers.idPrefix + id
+
+  /**
+   * The password that is sent over the wire. If hashPassword is set to true, it md5's password
+   * @return
+   */
+  def wirePassword =
+    if (!pwNeedsHashing)
+      password
+    else
+      password.map(Client.md5)
 }
 
 sealed abstract class MessageSource {

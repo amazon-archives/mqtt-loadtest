@@ -34,10 +34,10 @@ class XenPublisher(client: AsyncMqttClient) extends Actor {
 	val config = Config.config
 	val url = s"tcp://${Config.config.host}:${Config.config.port}"
   val username = config.user.get
-  val pw = Client.md5(config.password.get)
-  val clean = config.pubClean
-  val sleepBetweenPublishes = config.publishRate
-  val pubPrefix = config.publisherPrefix
+  val pw = Config.config.wirePassword.get
+  val clean = config.publishers.cleanSession
+  val sleepBetweenPublishes = config.publishers.rate
+  val pubPrefix = config.publishers.idPrefix
   
   var iteration = 0
 
@@ -54,7 +54,7 @@ class XenPublisher(client: AsyncMqttClient) extends Actor {
   }
 
   def publish(id: Int) = {
-  	val payload = Config.config.payload.get(id, iteration)
+  	val payload = Config.config.publishers.payload.get(id, iteration)
   	client.publish(new PublishMessage(config.pubTopic(id), QoS.AT_LEAST_ONCE, payload))
   	Reporter.sentPublish()
   	iteration += 1

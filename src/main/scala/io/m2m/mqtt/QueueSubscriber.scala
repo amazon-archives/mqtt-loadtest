@@ -39,7 +39,7 @@ case class QueueReporter() extends ClientReporter {
 class QueueSubscriber extends Actor {
   val url = s"tcp://${Config.config.host}:${Config.config.port}"
   val username = Config.config.user.get
-  val pw = Client.md5(Config.config.password.get)
+  val pw = Config.config.wirePassword.get
   val clientid = Config.config.queueClientid
   val subTopic = Config.config.queueTopic
   val subQos = QoS.AT_MOST_ONCE

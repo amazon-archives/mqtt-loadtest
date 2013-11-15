@@ -28,7 +28,7 @@ class SharedSubscriber extends Actor {
   val host = Config.config.subHost.getOrElse(Config.config.host)
   val url = s"tcp://$host:${Config.config.port}"
   val username = Config.config.user.get
-  val pw = Client.md5(Config.config.password.get)
+  val pw = Config.config.wirePassword.get
   val clientid = Config.config.subscriberClientId
   val subTopic = Config.config.subTopic
   val subQos = Config.config.subQos

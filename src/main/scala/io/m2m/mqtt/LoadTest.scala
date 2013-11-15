@@ -24,7 +24,7 @@ object Client {
     mqtt.setClientId(prefix + id)
     mqtt.setCleanSession(clean)
     if (config.user.isDefined) mqtt.setUserName(config.user.get)
-    if (config.password.isDefined) mqtt.setPassword(md5(config.password.get))
+    if (config.password.isDefined) mqtt.setPassword(config.wirePassword.get)
     mqtt.setKeepAlive(30)
     mqtt.callbackConnection()
   }
@@ -66,7 +66,7 @@ object Client {
   }
 
   def createPublisher(id: Int, actor: ActorRef) = {
-    val client = getClient(config.publisherPrefix, id, config.pubClean)
+    val client = getClient(config.publishers.idPrefix, id, config.publishers.cleanSession)
     client.listener(new Listener {
       def onPublish(topic: UTF8Buffer, body: Buffer, ack: Runnable) {}
 
@@ -91,8 +91,8 @@ case class Publisher(id: Int) extends Actor {
   import Config.config
   import ExecutionContext.Implicits.global
 
-  val sleepBetweenPublishes = config.publishRate
-  val qos = Client.qos(config.pubQos)
+  val sleepBetweenPublishes = config.publishers.rate
+  val qos = Client.qos(config.publishers.qos)
   val publishCallback = Client.callback((_: Void) => Reporter.deliveryComplete(), Reporter.messageErred)
   var iteration = 0
 
@@ -104,8 +104,8 @@ case class Publisher(id: Int) extends Actor {
         }
       }
     case Publish(client) =>
-      val payload = config.payload.get(id, iteration)
-      client.publish(config.pubTopic(id), payload, qos, config.pubRetain, publishCallback)
+      val payload = config.publishers.payload.get(id, iteration)
+      client.publish(config.pubTopic(id), payload, qos, config.publishers.retain, publishCallback)
       Reporter.sentPublish()
       iteration += 1
   }
@@ -237,7 +237,7 @@ object LoadTest extends App {
     Thread.sleep(config.connectRate)
   }
 
-  for (i <- 1 to config.publishers) {
+  for (i <- 1 to config.publishers.count) {
     try {
       val publisher = system.actorOf(Props(classOf[Publisher], i).withDispatcher("publishers.dispatcher"), s"publisher-$i")
       Client.createPublisher(i, publisher)
