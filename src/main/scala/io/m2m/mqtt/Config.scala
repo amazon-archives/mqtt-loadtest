@@ -54,7 +54,8 @@ object Config {
         conf.getInt("publishers.qos"),
         conf.getBoolean("publishers.retain"),
         conf.getString("publishers.client-id-prefix"),
-        Try(conf.getBoolean("publishers.clean-session")).getOrElse(true)
+        Try(conf.getBoolean("publishers.clean-session")).getOrElse(true),
+        Try(conf.getInt("publishers.time-span")).toOption
       ),
       conf.getString("subscribers.topic"),
       conf.getInt("subscribers.count"),
@@ -66,7 +67,8 @@ object Config {
       conf.getString("queue-monitor.clientid"),
       conf.getString("queue-monitor.topic"),
       if (conf.hasPath("subscribers.custom-host")) Some(conf.getString("subscribers.custom-host")) else None,
-      Try(conf.getBoolean("pwNeedsHashing")).getOrElse(true)
+      Try(conf.getBoolean("pwNeedsHashing")).getOrElse(true),
+      Try(conf.getInt("subscribers.time-span")).toOption
     )
   }
   
@@ -74,12 +76,12 @@ object Config {
 }
 
 case class PublisherConfig(topic: String, count: Int, rate: Long, payload: MessageSource, qos: Int, retain: Boolean,
-                            idPrefix: String, cleanSession: Boolean)
+                            idPrefix: String, cleanSession: Boolean, timeSpan: Option[Int])
 
 case class Config(host: String, port: Int, user: Option[String], password: Option[String], publishers: PublisherConfig,
                   subTopic: String, subscribers: Int, connectRate: Long, subQos: Int, subscriberClientId: String,
                   subClean: Boolean, subShared: Boolean, queueClientid: String, queueTopic: String,
-                  subHost: Option[String], pwNeedsHashing: Boolean) {
+                  subHost: Option[String], pwNeedsHashing: Boolean, subTimeSpan: Option[Int]) {
 
 
   private def templateTopic(topic: String, id: Int) = topic.replaceAll("\\$num", id.toString)

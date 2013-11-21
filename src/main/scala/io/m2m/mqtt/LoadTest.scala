@@ -62,6 +62,7 @@ object Client {
     client.connect(callback(_ => {
       client.subscribe(Array(new Topic(config.subTopic(id), qos(config.subQos))),
         callback(bytes => {}, _ => {}))
+      LoadTest.subController ! Register(client)
     }, _ => {}))
   }
 
@@ -84,8 +85,25 @@ object Client {
   }
 }
 
+
+class SubscriberController extends Actor {
+  import Config.config
+  import ExecutionContext.Implicits.global
+  def receive = {
+    case Register(client) =>
+      config.subTimeSpan.foreach { case timeStamp =>
+        context.system.scheduler.scheduleOnce(timeStamp seconds, self, Stop(client))
+      }
+
+    case Stop(client) =>
+      client.disconnect(null)
+  }
+}
+
+case class Register(client: CallbackConnection)
 case class Start(client: CallbackConnection)
 case class Publish(client: CallbackConnection)
+case class Stop(client: CallbackConnection)
 
 case class Publisher(id: Int) extends Actor {
   import Config.config
@@ -106,11 +124,18 @@ case class Publisher(id: Int) extends Actor {
           case e: Throwable => e.printStackTrace()
         }
       }
+      config.publishers.timeSpan.foreach(ts => {
+        context.system.scheduler.scheduleOnce(ts seconds, self, Stop(client))
+      })
+
     case Publish(client) =>
       val payload = config.publishers.payload.get(id, iteration)
       client.publish(config.pubTopic(id), payload, qos, config.publishers.retain, publishCallback)
       Reporter.sentPublish()
       iteration += 1
+    case Stop(client) =>
+      client.disconnect(null)
+      self ! PoisonPill
   }
 }
 
@@ -224,7 +249,7 @@ object LoadTest extends App {
 
   val system = ActorSystem("LoadTest")
   WebServer.start()
-
+  val subController = system.actorOf(Props[SubscriberController])
 
   val reporter = system.actorOf(Props[Reporter], "reporter")
   system.scheduler.schedule(1 second, 1 second) {
