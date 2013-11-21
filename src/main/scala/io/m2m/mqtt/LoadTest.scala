@@ -40,8 +40,8 @@ object Client {
   def qos(int: Int) = QoS.values().filter(q => q.ordinal() == int).head
 
   def subscribe(id: Int) = {
-    val clean = config.subClean
-    val client = getClient(config.subscriberClientId, id, clean).listener(new Listener {
+    val clean = config.subscribers.clean
+    val client = getClient(config.subscribers.clientIdPrefix, id, clean).listener(new Listener {
       def onPublish(topic: UTF8Buffer, body: Buffer, ack: Runnable) {
         //println("Got data on "+ topic.toString)
         Reporter.messageArrived(topic.toString)
@@ -60,7 +60,7 @@ object Client {
     })
 
     client.connect(callback(_ => {
-      client.subscribe(Array(new Topic(config.subTopic(id), qos(config.subQos))),
+      client.subscribe(Array(new Topic(config.subTopic(id), qos(config.subscribers.qos))),
         callback(bytes => {}, _ => {}))
       LoadTest.subController ! Register(client)
     }, _ => {}))
@@ -91,7 +91,7 @@ class SubscriberController extends Actor {
   import ExecutionContext.Implicits.global
   def receive = {
     case Register(client) =>
-      config.subTimeSpan.foreach { case timeStamp =>
+      config.subscribers.timeSpan.foreach { case timeStamp =>
         context.system.scheduler.scheduleOnce(timeStamp seconds, self, Stop(client))
       }
 
@@ -259,9 +259,9 @@ object LoadTest extends App {
   //val queueReporting = system.actorOf(Props[QueueSubscriber].withDispatcher("subscribers.dispatcher"), s"queue-subscriber")
   //queueReporting ! Init
 
-  for (i <- 1 to config.subscribers) {
+  for (i <- 1 to config.subscribers.count) {
     try {
-      config.subShared match {
+      config.subscribers.shared match {
         case true => 
           val subscriber = system.actorOf(Props[SharedSubscriber].withDispatcher("subscribers.dispatcher"), s"subscriber-$i")
           subscriber ! Init

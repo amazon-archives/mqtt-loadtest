@@ -57,18 +57,20 @@ object Config {
         Try(conf.getBoolean("publishers.clean-session")).getOrElse(true),
         Try(conf.getInt("publishers.time-span")).toOption
       ),
-      conf.getString("subscribers.topic"),
-      conf.getInt("subscribers.count"),
+      SubscriberConfig(
+        conf.getString("subscribers.topic"),
+        conf.getInt("subscribers.count"),
+        conf.getInt("subscribers.qos"),
+        conf.getString("subscribers.client-id-prefix"),
+        Try(conf.getBoolean("subscribers.clean-session")).getOrElse(true),
+        conf.getBoolean("subscribers.shared"),
+        if (conf.hasPath("subscribers.custom-host")) Some(conf.getString("subscribers.custom-host")) else None,
+        Try(conf.getInt("subscribers.time-span")).toOption
+      ),
       conf.getMilliseconds("millis-between-connects"),
-      conf.getInt("subscribers.qos"),
-      conf.getString("subscribers.client-id-prefix"),
-      Try(conf.getBoolean("subscribers.clean-session")).getOrElse(true),
-      conf.getBoolean("subscribers.shared"),
       conf.getString("queue-monitor.clientid"),
       conf.getString("queue-monitor.topic"),
-      if (conf.hasPath("subscribers.custom-host")) Some(conf.getString("subscribers.custom-host")) else None,
-      Try(conf.getBoolean("pwNeedsHashing")).getOrElse(true),
-      Try(conf.getInt("subscribers.time-span")).toOption
+      Try(conf.getBoolean("pwNeedsHashing")).getOrElse(true)
     )
   }
   
@@ -78,17 +80,19 @@ object Config {
 case class PublisherConfig(topic: String, count: Int, rate: Long, payload: MessageSource, qos: Int, retain: Boolean,
                             idPrefix: String, cleanSession: Boolean, timeSpan: Option[Int])
 
+case class SubscriberConfig(topic: String, count: Int, qos: Int, clientIdPrefix: String, clean: Boolean, shared: Boolean,
+                             host: Option[String], timeSpan: Option[Int])
+
 case class Config(host: String, port: Int, user: Option[String], password: Option[String], publishers: PublisherConfig,
-                  subTopic: String, subscribers: Int, connectRate: Long, subQos: Int, subscriberClientId: String,
-                  subClean: Boolean, subShared: Boolean, queueClientid: String, queueTopic: String,
-                  subHost: Option[String], pwNeedsHashing: Boolean, subTimeSpan: Option[Int]) {
+                  subscribers: SubscriberConfig, connectRate: Long, queueClientid: String, queueTopic: String,
+                  pwNeedsHashing: Boolean) {
 
 
   private def templateTopic(topic: String, id: Int) = topic.replaceAll("\\$num", id.toString)
 
   def pubTopic(id: Int): String = templateTopic(publishers.topic, id)
-  def subTopic(id: Int): String = templateTopic(subTopic, id)
-  def subscriberId(id: Int) = subscriberClientId + id
+  def subTopic(id: Int): String = templateTopic(subscribers.topic, id)
+  def subscriberId(id: Int) = subscribers.clientIdPrefix + id
   def publisherId(id: Int) = publishers.idPrefix + id
 
   /**
