@@ -10,6 +10,8 @@ import scala.concurrent.ExecutionContext
 import org.fusesource.hawtbuf.{Buffer, UTF8Buffer}
 import org.fusesource.mqtt.codec.MQTTFrame
 import scala.util.Try
+import scala.collection.mutable
+import java.util.UUID
 
 object Client {
   import Config.config
@@ -105,7 +107,7 @@ case class Start(client: CallbackConnection)
 case class Publish(client: CallbackConnection)
 case class Stop(client: CallbackConnection)
 
-case class Publisher(id: Int) extends Actor {
+case class Publisher(id: Int) extends Actor with LatencyTimer {
   import Config.config
   import ExecutionContext.Implicits.global
 
@@ -130,7 +132,9 @@ case class Publisher(id: Int) extends Actor {
 
     case Publish(client) =>
       val payload = config.publishers.payload.get(id, iteration)
-      client.publish(config.pubTopic(id), payload, qos, config.publishers.retain, publishCallback)
+
+      val msgId = generateMessageId()
+      client.publish(config.pubTopic(id, msgId), payload, qos, config.publishers.retain, publishCallback)
       Reporter.sentPublish()
       iteration += 1
     case Stop(client) =>
@@ -139,13 +143,35 @@ case class Publisher(id: Int) extends Actor {
   }
 }
 
+trait LatencyTimer { this: Actor =>
+  import Config.config
+
+  def generateMessageId() =
+    if (config.traceLatency)
+      Some(getId())
+    else
+      None
+
+  @inline
+  private def getId() = {
+    val id = UUID.randomUUID()
+    val ts = System.nanoTime()
+    Reporter.addMessageId(id, ts)
+    id
+  }
+}
+
 object Reporter {
+  import Config.config
   val start = DateTime.now().millisOfDay().get()
   val pubSent = new AtomicInteger()
   val pubComplete = new AtomicInteger()
   val pubAckTime = new AtomicLong()
   val subArrived = new AtomicInteger()
   val errors = new AtomicInteger()
+  val latencyIds = new mutable.HashMap[UUID, Long]()
+  val latencies = new AtomicLong()
+  val latencyCount = new AtomicInteger()
 
   var lastTime = start
   var lastSent = 0
@@ -153,13 +179,27 @@ object Reporter {
   var lastAckTime = 0L
   var lastArrived = 0
   var lastErrors = 0
+  var lastLatency = 0L
+  var lastLatencyCount = 0
 
   def sentPublish() = pubSent.incrementAndGet()
   def deliveryComplete(elapsedNanos: Long) = {
     pubAckTime.addAndGet(elapsedNanos)
     pubComplete.incrementAndGet()
   }
-  def messageArrived(topic: String) = subArrived.incrementAndGet()
+  def messageArrived(topic: String) = {
+    subArrived.incrementAndGet()
+    if (config.traceLatency) {
+      val now = System.nanoTime()
+      val uuid = topic.split('/').lastOption.map(x => Try(UUID.fromString(x)).toOption).flatten
+      val start = uuid.map(messageLatency).flatten
+      val diff = start.map(now - _)
+      diff.foreach{ case delta =>
+        latencyCount.incrementAndGet()
+        latencies.addAndGet(delta)
+      }
+    }
+  }
   def connectionLost(error: Throwable) {error.printStackTrace()}
   def messageErred(error: Throwable) {errors.incrementAndGet()}
 
@@ -171,6 +211,10 @@ object Reporter {
   def addSubscriber() {subscribers += 1}
   def lostPublisher() { publishers -= 1 }
   def lostSubscriber() { subscribers -= 1 }
+  def addMessageId(id: UUID, nanos: Long) = latencyIds.synchronized {
+    latencyIds += id -> nanos
+  }
+  def messageLatency(id: UUID) = latencyIds.synchronized(latencyIds.get(id))
 
   def getReport(): Report = {
     val now = DateTime.now().millisOfDay().get()
@@ -179,6 +223,8 @@ object Reporter {
     val ackTime = pubAckTime.get()
     val arrived = subArrived.get()
     val currentErrors = errors.get()
+    val latency = latencies.get()
+    val latCount = latencyCount.get()
 
     val report = Report(
       now - start,
@@ -189,7 +235,8 @@ object Reporter {
       ((ackTime - lastAckTime).toDouble / (arrived - lastArrived)) / 1000000,
       currentErrors - lastErrors,
       publishers,
-      subscribers
+      subscribers,
+      (latency - lastLatency).toDouble / (latCount - lastLatencyCount) / 1000000
     )
 
     lastTime = now
@@ -198,6 +245,8 @@ object Reporter {
     lastAckTime = ackTime
     lastArrived = arrived
     lastErrors = currentErrors
+    lastLatency = latency
+    lastLatencyCount = latCount
 
     report
   }
@@ -218,13 +267,14 @@ abstract class JsonSerialiazable {
 }
 
 case class Report(elapsedMs: Int, sentPs: Int, publishedPs: Int, consumedPs: Int, inFlight: Int, 
-  avgAckMillis: Double, errorsPs: Int, publishers: Int, subscribers: Int) extends JsonSerialiazable {
+  avgAckMillis: Double, errorsPs: Int, publishers: Int, subscribers: Int, latency: Double) extends JsonSerialiazable {
   import org.json4s.NoTypeHints
   import org.json4s.native.Serialization.{write, formats}
 
   implicit val fmts = formats(NoTypeHints)
 
-  def csv = f"$elapsedMs,$sentPs,$publishedPs,$consumedPs,$inFlight,$avgAckMillis%.3f,$errorsPs,$publishers,$subscribers"
+  def csv =
+    f"$elapsedMs,$sentPs,$publishedPs,$consumedPs,$inFlight,$avgAckMillis%.3f,$errorsPs,$publishers,$subscribers,$latency%.3f"
 
   def json = write(this)
 }
@@ -232,7 +282,7 @@ case class Report(elapsedMs: Int, sentPs: Int, publishedPs: Int, consumedPs: Int
 object Report
 
 class Reporter extends Actor {
-  println("Elapsed (ms),Sent (msgs/s),Published (msgs/s),Consumed (msgs/s),In Flight,Avg Ack (ms),Errors (msgs/s),Num Publishers,Num Subscribers")
+  println("Elapsed (ms),Sent (msgs/s),Published (msgs/s),Consumed (msgs/s),In Flight,Avg Ack (ms),Errors (msgs/s),Num Publishers,Num Subscribers,Avg Latency (ms)")
 
   def receive = {
     case Report => Reporter.doReport()

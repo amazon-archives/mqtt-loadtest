@@ -29,7 +29,7 @@ class PubReporter() extends ClientReporter {
   }
 }
 
-class XenPublisher(client: AsyncMqttClient) extends Actor {
+class XenPublisher(client: AsyncMqttClient) extends Actor with LatencyTimer {
 
 	val config = Config.config
 	val url = s"tcp://${Config.config.host}:${Config.config.port}"
@@ -55,7 +55,8 @@ class XenPublisher(client: AsyncMqttClient) extends Actor {
 
   def publish(id: Int) = {
   	val payload = Config.config.publishers.payload.get(id, iteration)
-  	client.publish(new PublishMessage(config.pubTopic(id), QoS.AT_LEAST_ONCE, payload))
+    val msgId = generateMessageId()
+  	client.publish(new PublishMessage(config.pubTopic(id, msgId), QoS.AT_LEAST_ONCE, payload))
   	Reporter.sentPublish()
   	iteration += 1
   }

@@ -5,6 +5,7 @@ import scala.reflect.io.Streamable
 import java.io.FileInputStream
 import scala.util.{Random, Try}
 import scala.collection.JavaConversions._
+import java.util.UUID
 
 case class SplunkConfig(splunkUser: String, splunkPass: String, splunkUrl: String, splunkProject: String)
 
@@ -70,7 +71,8 @@ object Config {
       conf.getMilliseconds("millis-between-connects"),
       conf.getString("queue-monitor.clientid"),
       conf.getString("queue-monitor.topic"),
-      Try(conf.getBoolean("pwNeedsHashing")).getOrElse(true)
+      Try(conf.getBoolean("pwNeedsHashing")).getOrElse(true),
+      Try(conf.getBoolean("trace-latency")).getOrElse(false)
     )
   }
   
@@ -85,13 +87,24 @@ case class SubscriberConfig(topic: String, count: Int, qos: Int, clientIdPrefix:
 
 case class Config(host: String, port: Int, user: Option[String], password: Option[String], publishers: PublisherConfig,
                   subscribers: SubscriberConfig, connectRate: Long, queueClientid: String, queueTopic: String,
-                  pwNeedsHashing: Boolean) {
+                  pwNeedsHashing: Boolean, traceLatency: Boolean) {
 
 
   private def templateTopic(topic: String, id: Int) = topic.replaceAll("\\$num", id.toString)
 
-  def pubTopic(id: Int): String = templateTopic(publishers.topic, id)
-  def subTopic(id: Int): String = templateTopic(subscribers.topic, id)
+  def pubTopic(id: Int, msgId: Option[UUID]): String = {
+    val msgIdSegment = msgId.map("/" + _).getOrElse("")
+    val topic = templateTopic(publishers.topic, id) + msgIdSegment
+    topic
+  }
+  def subTopic(id: Int): String =  {
+    val msgSegment =
+      if (traceLatency && !subscribers.topic.endsWith("#"))
+        "/+"
+      else
+        ""
+    templateTopic(subscribers.topic, id) + msgSegment
+  }
   def subscriberId(id: Int) = subscribers.clientIdPrefix + id
   def publisherId(id: Int) = publishers.idPrefix + id
 
