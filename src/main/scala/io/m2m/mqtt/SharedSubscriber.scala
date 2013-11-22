@@ -17,7 +17,7 @@ case class SubscribingReporter() extends ClientReporter {
   }
 
   def reportMessageArrived(message: PublishMessage) {
-  	Reporter.messageArrived(message.getTopic())
+  	Reporter.messageArrived(message.getTopic, message.getPayload)
   }
 }
 

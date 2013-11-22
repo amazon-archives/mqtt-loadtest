@@ -56,7 +56,8 @@ object Config {
         conf.getBoolean("publishers.retain"),
         conf.getString("publishers.client-id-prefix"),
         Try(conf.getBoolean("publishers.clean-session")).getOrElse(true),
-        Try(conf.getInt("publishers.time-span")).toOption
+        Try(conf.getInt("publishers.time-span")).toOption,
+          Try(conf.getString("subscribers.validate-file")).getOrElse("sent-messages.dat")
       ),
       SubscriberConfig(
         conf.getString("subscribers.topic"),
@@ -66,7 +67,8 @@ object Config {
         Try(conf.getBoolean("subscribers.clean-session")).getOrElse(true),
         conf.getBoolean("subscribers.shared"),
         if (conf.hasPath("subscribers.custom-host")) Some(conf.getString("subscribers.custom-host")) else None,
-        Try(conf.getInt("subscribers.time-span")).toOption
+        Try(conf.getInt("subscribers.time-span")).toOption,
+        Try(conf.getString("subscribers.validate-file")).getOrElse("received-messages.dat")
       ),
       conf.getMilliseconds("millis-between-connects"),
       conf.getString("queue-monitor.clientid"),
@@ -80,10 +82,10 @@ object Config {
 }
 
 case class PublisherConfig(topic: String, count: Int, rate: Long, payload: MessageSource, qos: Int, retain: Boolean,
-                            idPrefix: String, cleanSession: Boolean, timeSpan: Option[Int])
+                            idPrefix: String, cleanSession: Boolean, timeSpan: Option[Int], validateFile: String)
 
 case class SubscriberConfig(topic: String, count: Int, qos: Int, clientIdPrefix: String, clean: Boolean, shared: Boolean,
-                             host: Option[String], timeSpan: Option[Int])
+                             host: Option[String], timeSpan: Option[Int], validateFile: String)
 
 case class Config(host: String, port: Int, user: Option[String], password: Option[String], publishers: PublisherConfig,
                   subscribers: SubscriberConfig, connectRate: Long, queueClientid: String, queueTopic: String,
@@ -133,10 +135,10 @@ case class FileMessage(file: String) extends MessageSource {
 }
 
 case class GeneratedMessage(size: Int) extends MessageSource {
-  lazy val msg = {
+  lazy val msg: Array[Byte] = {
     val bytes = new Array[Byte](size)
     Random.nextBytes(bytes)
-    bytes
+    bytes.map(b => ((b % 70) + 30).toByte)
   }
 
   def get(clientNum: Int, iteration: Int) = msg

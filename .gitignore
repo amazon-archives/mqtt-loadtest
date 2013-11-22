@@ -2,3 +2,5 @@ publisher*/
 WEBSOCKET*/
 target/
 *.swp
+sent-messages.dat
+received-messages.dat

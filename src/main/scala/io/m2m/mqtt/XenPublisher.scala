@@ -56,8 +56,12 @@ class XenPublisher(client: AsyncMqttClient) extends Actor with LatencyTimer {
   def publish(id: Int) = {
   	val payload = Config.config.publishers.payload.get(id, iteration)
     val msgId = generateMessageId()
-  	client.publish(new PublishMessage(config.pubTopic(id, msgId), QoS.AT_LEAST_ONCE, payload))
-  	Reporter.sentPublish()
+    val topic = config.pubTopic(id, msgId)
+  	client.publish(new PublishMessage(topic, QoS.AT_LEAST_ONCE, payload))
+    msgId match {
+      case Some(uuid) => Reporter.sentPublish(uuid, topic, payload)
+      case None => Reporter.sentPublish()
+    }
   	iteration += 1
   }
 

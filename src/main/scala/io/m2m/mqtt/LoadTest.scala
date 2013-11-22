@@ -12,6 +12,7 @@ import org.fusesource.mqtt.codec.MQTTFrame
 import scala.util.Try
 import scala.collection.mutable
 import java.util.UUID
+import java.nio.ByteBuffer
 
 object Client {
   import Config.config
@@ -46,7 +47,9 @@ object Client {
     val client = getClient(config.subscribers.clientIdPrefix, id, clean).listener(new Listener {
       def onPublish(topic: UTF8Buffer, body: Buffer, ack: Runnable) {
         //println("Got data on "+ topic.toString)
-        Reporter.messageArrived(topic.toString)
+        val buf = new Array[Byte](body.getLength)
+        System.arraycopy(body.getData, body.getOffset, buf, 0, body.getLength)
+        Reporter.messageArrived(topic.toString, buf)
         ack.run()
       }
 
@@ -134,8 +137,12 @@ case class Publisher(id: Int) extends Actor with LatencyTimer {
       val payload = config.publishers.payload.get(id, iteration)
 
       val msgId = generateMessageId()
-      client.publish(config.pubTopic(id, msgId), payload, qos, config.publishers.retain, publishCallback)
-      Reporter.sentPublish()
+      val topic = config.pubTopic(id, msgId)
+      client.publish(topic, payload, qos, config.publishers.retain, publishCallback)
+      msgId match {
+        case Some(id) => Reporter.sentPublish(id, topic, payload)
+        case None => Reporter.sentPublish()
+      }
       iteration += 1
     case Stop(client) =>
       client.disconnect(null)
@@ -182,12 +189,16 @@ object Reporter {
   var lastLatency = 0L
   var lastLatencyCount = 0
 
-  def sentPublish() = pubSent.incrementAndGet()
+  def sentPublish(): Unit = pubSent.incrementAndGet()
+  def sentPublish(id: UUID, topic: String, payload: Array[Byte]): Unit = {
+    sentPublish()
+    Validation.publisher ! Validation.Save(id, topic, payload)
+  }
   def deliveryComplete(elapsedNanos: Long) = {
     pubAckTime.addAndGet(elapsedNanos)
     pubComplete.incrementAndGet()
   }
-  def messageArrived(topic: String) = {
+  def messageArrived(topic: String, payload: Array[Byte]) = {
     subArrived.incrementAndGet()
     if (config.traceLatency) {
       val now = System.nanoTime()
@@ -198,6 +209,8 @@ object Reporter {
         latencyCount.incrementAndGet()
         latencies.addAndGet(delta)
       }
+      uuid.foreach(id =>
+        Validation.subscriber ! Validation.Save(id, topic, payload))
     }
   }
   def connectionLost(error: Throwable) {error.printStackTrace()}
