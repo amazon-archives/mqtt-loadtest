@@ -42,15 +42,14 @@ class Validation(stream: FileOutputStream) extends Actor {
   def receive = {
     case Save(id, topic, payload) =>
       val topicBytes = topic.getBytes
-      val length = 16 + 4 + 4 + topicBytes.size + payload.size
+      val length = 16 + 4 + topicBytes.size + 8
       val buffer = ByteBuffer.allocate(length)
 
       buffer.putLong(id.getMostSignificantBits)
       buffer.putLong(id.getLeastSignificantBits)
       buffer.putInt(topicBytes.length)
-      buffer.putInt(payload.length)
       buffer.put(topicBytes)
-      buffer.put(payload)
+      buffer.putLong(crc(payload))
 
       buffer.flip()
 
@@ -92,6 +91,12 @@ trait Validator {
     println(s"Valid: $valid")
   }
 
+  def crc(buffer: Array[Byte]) = {
+    val crc = new CRC32()
+    crc.update(buffer)
+    crc.getValue
+  }
+
   def read(file: String) = {
     val stream = new DataInputStream(new FileInputStream(file))
 
@@ -99,15 +104,6 @@ trait Validator {
       val buffer = new Array[Byte](count)
       stream.read(buffer)
       new String(buffer)
-    }
-
-    def readCrc(count: Int) = {
-      val buffer = new Array[Byte](count)
-      stream.read(buffer)
-      val crc = new CRC32()
-      crc.update(buffer)
-      crc.getValue
-      count.toLong
     }
 
     @tailrec
@@ -118,9 +114,8 @@ trait Validator {
         new UUID(msb, lsb)
       }
       val topicLength = stream.readInt()
-      val payloadLength = stream.readInt()
       val topic = readString(topicLength)
-      val payload = readCrc(payloadLength)
+      val payload = stream.readLong()
 
       id -> (topic, payload)
     } match {
