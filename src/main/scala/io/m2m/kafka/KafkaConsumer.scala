@@ -52,7 +52,7 @@ object KafkaConsumer {
               // The assumption is that when we create a rule, we substitute all / for -. The / is a special
               // character in Kafka topics (filesystem character), so we have to use either - or _.
               val mqttTopic = msg.topic.replace('-', '/') + '/' +  key.replace('-', '/')
-              Reporter.messageArrived(key, ByteString(mqttTopic, "utf8").toArray)
+              Reporter.messageArrived(mqttTopic, msg.message)
             }
           } finally {
             Reporter.lostSubscriber()
