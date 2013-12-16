@@ -95,7 +95,7 @@ case class Config(host: String, port: Int, user: Option[String], password: Optio
   private def templateTopic(topic: String, id: Int) = topic.replaceAll("\\$num", id.toString)
 
   def pubTopic(id: Int, msgId: Option[UUID]): String = {
-    val msgIdSegment = msgId.map("/" + _).getOrElse("")
+    val msgIdSegment = msgId.map("/" + _.toString.replace("-", "")).getOrElse("")
     val topic = templateTopic(publishers.topic, id) + msgIdSegment
     topic
   }

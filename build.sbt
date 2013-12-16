@@ -33,5 +33,7 @@ libraryDependencies ++= Seq(
 	"org.mashupbots.socko" %% "socko-webserver" % "0.3.0",
 	"net.databinder.dispatch" %% "dispatch-core" % "0.11.0",
 	"ch.qos.logback" % "logback-classic" %"1.0.1",
+	"org.apache.kafka" % "kafka_2.10" % "0.8.0" exclude("com.sun.jdmk", "jmxtools") exclude("com.sun.jmx", "jmxri"),
 	"net.sf.xenqtt" % "xenqtt" % "0.9.3"
 )
+

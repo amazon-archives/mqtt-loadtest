@@ -13,6 +13,7 @@ import scala.util.Try
 import scala.collection.mutable
 import java.util.UUID
 import java.nio.ByteBuffer
+import io.m2m.kafka.KafkaConsumer
 
 object Client {
   import Config.config
@@ -199,10 +200,13 @@ object Reporter {
     pubComplete.incrementAndGet()
   }
   def messageArrived(topic: String, payload: Array[Byte]) = {
+    def string2uuid(uuid: String) =
+      UUID.fromString(uuid.replaceAll("""(\w{8})(\w{4})(\w{4})(\w{4})(\w{12})""", "$1-$2-$3-$4-$5"))
+
     subArrived.incrementAndGet()
     if (config.traceLatency) {
       val now = System.nanoTime()
-      val uuid = topic.split('/').lastOption.map(x => Try(UUID.fromString(x)).toOption).flatten
+      val uuid = topic.split('/').lastOption.map(x => Try(string2uuid(x)).toOption).flatten
       val start = uuid.map(messageLatency).flatten
       val diff = start.map(now - _)
       diff.foreach{ case delta =>
@@ -322,18 +326,26 @@ object LoadTest extends App {
   //val queueReporting = system.actorOf(Props[QueueSubscriber].withDispatcher("subscribers.dispatcher"), s"queue-subscriber")
   //queueReporting ! Init
 
-  for (i <- 1 to config.subscribers.count) {
-    try {
-      config.subscribers.shared match {
-        case true => 
-          val subscriber = system.actorOf(Props[SharedSubscriber].withDispatcher("subscribers.dispatcher"), s"subscriber-$i")
-          subscriber ! Init
-        case false => Client.subscribe(i)
-      }  
-    } catch {
-      case e: Throwable => e.printStackTrace()
-    }
-    Thread.sleep(config.connectRate)
+  val kafkaConfig = KafkaConsumer.KafkaConfig.get(Config.configFactory)
+  kafkaConfig match {
+    case Some(cfg) =>
+      println("Starting kafka consumers")
+      KafkaConsumer.start(cfg)
+    case None =>
+      println("Starting MQTT subscribers")
+      for (i <- 1 to config.subscribers.count) {
+        try {
+          config.subscribers.shared match {
+            case true =>
+              val subscriber = system.actorOf(Props[SharedSubscriber].withDispatcher("subscribers.dispatcher"), s"subscriber-$i")
+              subscriber ! Init
+            case false => Client.subscribe(i)
+          }
+        } catch {
+          case e: Throwable => e.printStackTrace()
+        }
+        Thread.sleep(config.connectRate)
+      }
   }
 
   for (i <- 1 to config.publishers.count) {
